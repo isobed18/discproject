@@ -1,80 +1,160 @@
 # DISC (Digital Identity Disc & Short-Lived Capability Coupons)
 
-DISC is a secure, auditable authorization framework that moves away from long-lived credentials. It issues short-lived, operation-specific "permission coupons" that are verified before every action.
+DISC is a next-generation authorization framework designed to move away from long-lived static credentials (like API Keys or long-lived JWTs). Instead, it issues **short-lived, operation-specific "permission coupons"** that are cryptographically signed and verified before every action.
 
-## Features
-- **Short-Lived Coupons**: PASETO v4 tokens with short TTLs.
-- **Proof-of-Possession (PoP)**: Coupons bound to mTLS client certificates.
-- **Revocation**: Immediate revocation via Redis blacklist.
-- **Audit Logging**: Immutable logs for every issuance and verification.
-- **Policy Enforcement**: OPA-like policy checks for issuance.
+This project implements the **Coupon Authority (CA)**, the central service responsible for issuing, verifying, and revoking these coupons.
 
-## Architecture
-- **Backend**: FastAPI (Python)
-- **Database**: PostgreSQL (Audit Logs)
-- **Cache**: Redis (Revocation)
-- **Frontend**: React/TypeScript (Admin UI)
-- **CLI**: Python-based command line tool
+---
 
-## Getting Started
+## 🏗️ Architecture & Components
+
+The project is composed of several key components working together:
+
+1.  **Backend (Coupon Authority Core)**:
+    *   Built with **Python FastAPI**.
+    *   Handles cryptographic signing (PASETO v4) and verification.
+    *   Enforces policies (OPA-style) before issuing coupons.
+    *   Manages the revocation list (Redis) and audit logs.
+
+2.  **Frontend (Admin Console)**:
+    *   Built with **React & TypeScript**.
+    *   Provides a dashboard for administrators to view audit logs and manually revoke coupons.
+
+3.  **CLI (Command Line Interface)**:
+    *   A Python-based tool for developers and CI/CD pipelines to interact with the CA (Mint, Verify, Revoke).
+
+4.  **SDK (Software Development Kit)**:
+    *   A Python library (`disc_sdk`) that simplifies integrating DISC into other applications.
+
+---
+
+## 📂 Project Structure Explained
+
+Here is a breakdown of the codebase for new contributors:
+
+*   **`backend/`**: The core API server.
+    *   `main.py`: Entry point of the application. Sets up the API and CORS.
+    *   `api/`: Contains the REST API definitions.
+        *   `endpoints.py`: Defines `/issue`, `/verify`, `/revoke` routes.
+        *   `models.py`: Pydantic models defining the request/response schemas.
+    *   `core/`: Core logic and configuration.
+        *   `security.py`: Handles PASETO v4 signing/verification, Key management, OIDC token decoding, and mTLS header extraction.
+        *   `config.py`: Loads environment variables (Redis URL, Secret Keys).
+    *   `services/`: Business logic services.
+        *   `revocation.py`: Manages the communication with Redis for checking revoked tokens.
+*   **`frontend/`**: The Admin UI.
+    *   `src/App.tsx`: Main React component containing the logic for fetching logs and revoking tokens.
+*   **`cli/`**:
+    *   `disc-cli.py`: The script that runs the CLI commands. It uses the SDK internally.
+*   **`sdk/`**:
+    *   `disc_sdk/client.py`: The Python client library that wraps HTTP calls to the backend.
+*   **`docs/`**: Documentation files (Security, Backup strategies).
+
+---
+
+## 🚀 Getting Started
 
 ### Prerequisites
-- Python 3.11+
-- Node.js 18+
-- Docker & Docker Compose (optional, for full stack)
+*   **Python 3.11+**
+*   **Node.js 18+**
+*   **Redis** (Optional for local dev, the system falls back to in-memory mock if Redis is missing).
 
 ### Installation
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/your-org/discproject.git
-   cd discproject
-   ```
+1.  **Clone the repository**:
+    ```bash
+    git clone https://github.com/your-org/discproject.git
+    cd discproject
+    ```
 
-2. **Backend Setup**
-   ```bash
-   cd backend
-   pip install -r requirements.txt
-   ```
+2.  **Backend Setup**:
+    ```bash
+    cd backend
+    pip install -r requirements.txt
+    ```
 
-3. **Frontend Setup**
-   ```bash
-   cd frontend
-   npm install
-   ```
+3.  **Frontend Setup**:
+    ```bash
+    cd frontend
+    npm install
+    ```
 
-4. **CLI Setup**
-   ```bash
-   # CLI uses the SDK in sdk/
-   pip install -r backend/requirements.txt # SDK deps are similar
-   ```
+### Running the Project
 
-### Running Locally
+1.  **Start the Backend**:
+    ```bash
+    # From the root directory
+    uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+    ```
+    The API will be available at `http://localhost:8000`.
 
-1. **Start Backend**
-   ```bash
-   uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
-   ```
-   *Note: Requires Redis running on localhost:6379 or it will use an in-memory mock.*
+2.  **Start the Frontend**:
+    ```bash
+    # From the frontend directory
+    cd frontend
+    npm run dev
+    ```
+    The UI will be available at `http://localhost:5173`.
 
-2. **Start Frontend**
-   ```bash
-   cd frontend
-   npm run dev
-   ```
+---
 
-3. **Use CLI**
-   ```bash
-   # Mint a coupon
-   python cli/disc-cli.py mint --audience my-service --scope read:data
+## 📖 Usage Guide
 
-   # Verify a coupon
-   python cli/disc-cli.py verify "v4.public..."
-   ```
+### 1. Using the CLI
+The CLI is the easiest way to interact with the system.
 
-## Security
-- **OIDC**: Pass `Authorization: Bearer <token>` header to `/issue`.
-- **mTLS**: Pass `X-Client-Cert-Hash` header to bind coupon to a certificate.
+*   **Mint (Issue) a Coupon**:
+    Creates a new coupon for a specific audience and scope.
+    ```bash
+    python cli/disc-cli.py mint --audience my-service --scope read:data --ttl 300
+    ```
+    *Returns*: A JSON object containing the signed `coupon` string.
 
-## License
-MIT
+*   **Verify a Coupon**:
+    Checks if a coupon is valid, not expired, and not revoked.
+    ```bash
+    python cli/disc-cli.py verify "v4.public.YOUR_COUPON_STRING..."
+    ```
+
+*   **Revoke a Coupon**:
+    Invalidates a coupon using its JTI (ID).
+    ```bash
+    python cli/disc-cli.py revoke "COUPON_JTI_UUID"
+    ```
+
+### 2. API Endpoints
+
+*   **`POST /v1/issue`**
+    *   **Purpose**: Issues a new PASETO coupon.
+    *   **Headers**:
+        *   `Authorization`: Bearer <OIDC_TOKEN> (Optional, identifies the caller).
+        *   `X-Client-Cert-Hash`: <SHA256> (Optional, binds coupon to mTLS cert).
+    *   **Body**:
+        ```json
+        {
+          "audience": "target-service",
+          "scope": "read:data",
+          "ttl_seconds": 300
+        }
+        ```
+
+*   **`POST /v1/verify`**
+    *   **Purpose**: Verifies a coupon.
+    *   **Body**: `{"coupon": "v4.public..."}`
+    *   **Response**: Returns the claims if valid, or an error.
+
+*   **`POST /v1/revoke`**
+    *   **Purpose**: Revokes a coupon.
+    *   **Body**: `{"jti": "uuid...", "reason": "compromised"}`
+
+*   **`GET /v1/audit-logs`**
+    *   **Purpose**: Returns a list of all issuance and revocation events.
+
+---
+
+## 🔒 Security Features Implemented
+
+1.  **PASETO v4 (Public)**: We use Asymmetric Ed25519 keys for signing. This ensures that only the CA can issue coupons, but anyone with the public key can verify them.
+2.  **Proof-of-Possession (PoP)**: If an `X-Client-Cert-Hash` header is present during issuance, it is embedded in the token (`cnf` claim). The receiver should verify that the client presenting the token matches this hash.
+3.  **OIDC Integration**: The system accepts standard OIDC tokens (like from Auth0 or Keycloak) to identify *who* is requesting a coupon.
+4.  **Policy Enforcement**: Before issuing, the system checks rules (e.g., "Only internal-admin can request admin scopes").
