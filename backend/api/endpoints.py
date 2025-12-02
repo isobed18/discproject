@@ -8,9 +8,11 @@ router = APIRouter()
 
 @router.post("/issue", response_model=CouponResponse)
 def issue_coupon(req: CouponRequest):
-    # TODO: Validate client identity (mTLS/OIDC) and check policies (OPA)
-    # For MVP, we assume the request is authorized if it reaches here (or we add a dummy check)
-    
+    # Policy Check (Simulating OPA)
+    # Deny if scope contains "admin" unless audience is "internal-admin"
+    if "admin" in req.scope and req.audience != "internal-admin":
+        raise HTTPException(status_code=403, detail="Policy denied: 'admin' scope requires 'internal-admin' audience")
+
     # Create the coupon
     token = create_coupon(
         subject="test-user", # In real app, get from auth context
@@ -20,13 +22,23 @@ def issue_coupon(req: CouponRequest):
     )
     
     # We need to extract JTI to return it, or we can decode the token we just made
-    # For efficiency, create_coupon could return it, but for now let's decode
     decoded = verify_coupon(token)
+    jti = decoded.get("jti")
+
+    # Log event
+    audit_logs.append({
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "event_type": "coupon_issued",
+        "actor": "test-user",
+        "action": "issue",
+        "resource": jti,
+        "details": {"audience": req.audience, "scope": req.scope}
+    })
     
     return CouponResponse(
         coupon=token,
         expires_in=req.ttl_seconds or 300,
-        jti=decoded.get("jti") # pyseto might not set jti by default if we didn't pass it? check implementation
+        jti=jti
     )
 
 @router.post("/verify", response_model=VerifyResponse)
@@ -45,15 +57,23 @@ def verify_token(req: VerifyRequest):
 
 @router.post("/revoke", response_model=RevokeResponse)
 def revoke_token(req: RevokeRequest):
-    # TODO: Check admin permissions
-    
-    # We need to know the TTL to set in Redis. 
-    # Ideally, the caller provides it or we look it up. 
-    # For MVP, we'll set a default safe TTL (e.g., 1 hour) or require it in request.
-    # Let's assume 1 hour for now if not known.
+    # ... (existing code)
     revoke_jti(req.jti, ttl_seconds=3600, reason=req.reason)
     
     return RevokeResponse(
         status="revoked",
         revoked_at=datetime.now(timezone.utc).isoformat()
     )
+
+# Mock in-memory audit log for MVP
+audit_logs = []
+
+@router.get("/audit-logs")
+def get_audit_logs():
+    return audit_logs
+
+@router.post("/log-event")
+def log_event(event: dict):
+    # Internal endpoint to log events (in real app, this happens automatically)
+    audit_logs.append(event)
+    return {"status": "logged"}
