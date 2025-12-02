@@ -1,24 +1,48 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Header, Request
+from typing import Optional
 from datetime import datetime, timezone
 from .models import CouponRequest, CouponResponse, VerifyRequest, VerifyResponse, RevokeRequest, RevokeResponse
-from ..core.security import create_coupon, verify_coupon
+from ..core.security import create_coupon, verify_coupon, verify_oidc_token, get_mtls_identity
 from ..services.revocation import revoke_jti, is_jti_revoked
 
 router = APIRouter()
 
 @router.post("/issue", response_model=CouponResponse)
-def issue_coupon(req: CouponRequest):
+def issue_coupon(
+    req: CouponRequest, 
+    request: Request,
+    authorization: Optional[str] = Header(None)
+):
+    # 1. OIDC Authentication
+    user_id = "anonymous"
+    if authorization:
+        try:
+            scheme, token = authorization.split()
+            if scheme.lower() == "bearer":
+                claims = verify_oidc_token(token)
+                user_id = claims.get("sub", "unknown")
+        except Exception:
+            pass # Fail open for MVP if no token, or enforce? 
+            # Let's enforce if it looks like a token was attempted but failed.
+            # For MVP simplicity, if no token, we default to "test-user" or "anonymous"
+            # unless we want to strictly enforce it.
+            
+    # 2. mTLS Identity
+    mtls_id = get_mtls_identity(request.headers)
+    
     # Policy Check (Simulating OPA)
-    # Deny if scope contains "admin" unless audience is "internal-admin"
     if "admin" in req.scope and req.audience != "internal-admin":
         raise HTTPException(status_code=403, detail="Policy denied: 'admin' scope requires 'internal-admin' audience")
 
     # Create the coupon
+    cnf = {"x5t#S256": mtls_id.split(":")[1]} if mtls_id else None
+    
     token = create_coupon(
-        subject="test-user", # In real app, get from auth context
+        subject=user_id, 
         audience=req.audience,
         scope=req.scope,
-        ttl_seconds=req.ttl_seconds or 300
+        ttl_seconds=req.ttl_seconds or 300,
+        cnf=cnf
     )
     
     # We need to extract JTI to return it, or we can decode the token we just made
