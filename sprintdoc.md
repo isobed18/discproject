@@ -15,7 +15,8 @@ The primary goal of Sprint 1 is to establish the foundational design, architectu
 - [x] **Deploy Core Infrastructure**: K8s cluster definition, Core components (Vault, Kafka, Redis, Postgres, etc.).
 
 ## Increment Log
-*(To be updated during the sprint)*
+- **Week 1**: Completed foundational design, standards, and initial tooling/infra setup.
+- **Week 2 (MVP)**: Implemented Coupon Authority MVP with `/issue`, `/verify`, `/revoke` endpoints. Integrated Redis for revocation. Implemented PASETO v4 signing and PoP validation.
 
 ## Sprint Retrospective
 *(To be updated at the end of the sprint)*
