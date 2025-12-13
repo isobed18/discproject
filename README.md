@@ -144,55 +144,70 @@ Now, if OPA is not running or the policy denies access, your requests will be re
 
 We have implemented **Delegation** and **Partial Evaluation**.
 
-### 1. Delegation (Yetki Devri)
-Allows a user to temporarily grant access to their resource to another user.
+## 🧪 Testing New Features (Week 3 - Production Flow)
 
-**Bash / CMD:**
+We have implemented **Delegation** and **Partial Evaluation**.
+To test these features robustly (mimicking production), we must use **Authentication Tokens (OIDC)**.
+
+### Prerequisites (Generate Token)
+Since we don't have a real Identity Provider (IdP) for local dev, generating a valid token is necessary. We provided a helper script:
+
+```bash
+# Generate a token for user "ali"
+python cli/create_test_token.py ali
+# Output example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+*Save this token as `$TOKEN` (bash) or `$env:TOKEN` (PowerShell).*
+
+### 1. Delegation (Yetki Devri)
+Grant access to "ali".
+*Note: Any authorized user (or system admin) can create delegations.*
+
+**Bash:**
 ```bash
 curl -X POST "http://localhost:8000/v1/delegations" \
      -H "Content-Type: application/json" \
-     -d '{"delegate": "anonymous", "resource": "secure-doc-1", "ttl": 3600}'
+     -d '{"delegate": "ali", "resource": "secure-doc-1", "ttl": 3600}'
 ```
 
 **PowerShell:**
-*(Using native PowerShell command which is more reliable for JSON)*
 ```powershell
 Invoke-RestMethod -Method POST -Uri "http://localhost:8000/v1/delegations" `
      -ContentType "application/json" `
-     -Body '{"delegate": "anonymous", "resource": "secure-doc-1", "ttl": 3600}'
+     -Body '{"delegate": "ali", "resource": "secure-doc-1", "ttl": 3600}'
 ```
 
-**Verification:** Now the guest (anonymous) can request a coupon for `secure-doc-1`.
-```bash
-# Bash
-curl -X POST "http://localhost:8000/v1/issue" \
-     -H "Content-Type: application/json" \
-     -d '{"audience": "app-srv", "scope": "read", "resource": "secure-doc-1"}'
-```
-```powershell
-# PowerShell
-Invoke-RestMethod -Method POST -Uri "http://localhost:8000/v1/issue" `
-     -ContentType "application/json" `
-     -Body '{"audience": "app-srv", "scope": "read", "resource": "secure-doc-1"}'
-```
+### 2. Partial Evaluation (With Token)
+Now, call the endpoint **AS "ali"** using the token.
 
-### 2. Partial Evaluation (Toplu Kontrol)
-Ask the system: "Which of these resources can I access?" efficiently.
-
-**Bash / CMD:**
+**Bash:**
 ```bash
 curl -X POST "http://localhost:8000/v1/filter-authorized" \
+     -H "Authorization: Bearer <PASTE_TOKEN_HERE>" \
      -H "Content-Type: application/json" \
      -d '{"resources": ["secure-doc-1", "forbidden-doc-99"], "action": "read", "audience": "app-srv"}'
 ```
 
 **PowerShell:**
 ```powershell
+$Token = python cli/create_test_token.py ali
 Invoke-RestMethod -Method POST -Uri "http://localhost:8000/v1/filter-authorized" `
+     -Headers @{Authorization=("Bearer " + $Token)} `
      -ContentType "application/json" `
      -Body '{"resources": ["secure-doc-1", "forbidden-doc-99"], "action": "read", "audience": "app-srv"}'
 ```
-*Result:* Should return `["secure-doc-1"]` (since we delegated it to `anonymous`). `forbidden-doc-99` should be absent.
+*Result:* Returns `["secure-doc-1"]` because OPA sees the token belongs to `ali` and `ali` has a delegation.
+
+### 3. Issue Coupon (With Token)
+Obtain the final PASETO coupon for the resource.
+
+**PowerShell:**
+```powershell
+Invoke-RestMethod -Method POST -Uri "http://localhost:8000/v1/issue" `
+     -Headers @{Authorization=("Bearer " + $Token)} `
+     -ContentType "application/json" `
+     -Body '{"audience": "app-srv", "scope": "read", "resource": "secure-doc-1"}'
+```
 
 ---
 

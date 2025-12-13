@@ -144,55 +144,56 @@ Artık OPA çalışmıyorsa veya politika erişimi reddediyorsa, istekleriniz re
 
 **Delegasyon** ve **Kısmi Değerlendirme (Partial Eval)** özelliklerini test etmek için aşağıdaki adımları izleyin.
 
-### 1. Delegasyon (Yetki Devri)
-Bir kullanıcı, kendi kaynağına başkasının erişmesine izin verir.
+## 🧪 Yeni Özelliklerin Test Edilmesi (3. Hafta - Üretim Senaryosu)
 
-**Bash / CMD:**
+**Delegasyon** ve **Kısmi Değerlendirme** özelliklerini gerçekçi bir şekilde (Üretim ortamına uygun) test etmek için **Kimlik Doğrulama Tokenları (OIDC)** kullanmalıyız.
+
+### Ön Hazırlık (Token Üretme)
+Lokal geliştirmede gerçek bir Identity Provider (IdP) olmadığı için, test amaçlı geçerli bir token üretmemiz gerekir. Bunun için bir yardımcı script hazırladık:
+
 ```bash
-curl -X POST "http://localhost:8000/v1/delegations" \
-     -H "Content-Type: application/json" \
-     -d '{"delegate": "anonymous", "resource": "secure-doc-1", "ttl": 3600}'
+# "ali" kullanıcısı için token üret
+python cli/create_test_token.py ali
+# Çıktı örneği: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
+*Bu tokenı PowerShell'de bir değişkene atayın.*
+
+### 1. Delegasyon (Yetki Devri)
+"ali" kullanıcısına erişim verin.
 
 **PowerShell:**
-*(JSON işlemleri için en güvenilir yöntem)*
 ```powershell
 Invoke-RestMethod -Method POST -Uri "http://localhost:8000/v1/delegations" `
      -ContentType "application/json" `
-     -Body '{"delegate": "anonymous", "resource": "secure-doc-1", "ttl": 3600}'
+     -Body '{"delegate": "ali", "resource": "secure-doc-1", "ttl": 3600}'
 ```
 
-**Doğrulama**: Artık misafir (anonymous) `secure-doc-1` için kupon alabilir.
-```bash
-# Bash
-curl -X POST "http://localhost:8000/v1/issue" \
-     -H "Content-Type: application/json" \
-     -d '{"audience": "app-srv", "scope": "read", "resource": "secure-doc-1"}'
-```
-```powershell
-# PowerShell
-Invoke-RestMethod -Method POST -Uri "http://localhost:8000/v1/issue" `
-     -ContentType "application/json" `
-     -Body '{"audience": "app-srv", "scope": "read", "resource": "secure-doc-1"}'
-```
-
-### 2. Toplu Kontrol (Partial Evaluation)
-Sisteme "Bu dosyalardan hangilerine yetkim var?" diye sormak için kullanılır.
-
-**Bash / CMD:**
-```bash
-curl -X POST "http://localhost:8000/v1/filter-authorized" \
-     -H "Content-Type: application/json" \
-     -d '{"resources": ["secure-doc-1", "forbidden-doc-99"], "action": "read", "audience": "app-srv"}'
-```
+### 2. Toplu Kontrol (Token Kullanarak)
+Şimdi, sanki gerçekten **"ali"** giriş yapmış gibi tokenını kullanarak istek atalım.
 
 **PowerShell:**
 ```powershell
+# 1. Tokenı al
+$Token = python cli/create_test_token.py ali
+
+# 2. Token ile istek at
 Invoke-RestMethod -Method POST -Uri "http://localhost:8000/v1/filter-authorized" `
+     -Headers @{Authorization=("Bearer " + $Token)} `
      -ContentType "application/json" `
      -Body '{"resources": ["secure-doc-1", "forbidden-doc-99"], "action": "read", "audience": "app-srv"}'
 ```
-*Sonuç:* Sadece yetkiniz olan (`secure-doc-1`) dönmeli. Yetki vermediğimiz `forbidden-doc-99` listede **olmamalıdır**.
+*Sonuç:* OPA, tokenın "ali"ye ait olduğunu görür, "ali"nin delegasyonu olduğunu doğrular ve `["secure-doc-1"]` cevabını verir.
+
+### 3. Kupon Alma (Token Kullanarak)
+Aynı şekilde, kaynak için PASETO kuponu isteyelim.
+
+**PowerShell:**
+```powershell
+Invoke-RestMethod -Method POST -Uri "http://localhost:8000/v1/issue" `
+     -Headers @{Authorization=("Bearer " + $Token)} `
+     -ContentType "application/json" `
+     -Body '{"audience": "app-srv", "scope": "read", "resource": "secure-doc-1"}'
+```
 
 ---
 
