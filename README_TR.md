@@ -149,11 +149,11 @@ curl -X POST "http://localhost:8000/v1/delegations" \
 ```
 
 **PowerShell:**
-*(Not: JSON içinde çift tırnak kullanın ve iç tırnakları ters eğik çizgi `\"` ile kaçırın)*
+*(JSON işlemleri için en güvenilir yöntem)*
 ```powershell
-curl.exe -X POST "http://localhost:8000/v1/delegations" `
-     -H "Content-Type: application/json" `
-     -d "{\"delegate\": \"ali\", \"resource\": \"secure-doc-1\", \"ttl\": 3600}"
+Invoke-RestMethod -Method POST -Uri "http://localhost:8000/v1/delegations" `
+     -ContentType "application/json" `
+     -Body '{"delegate": "ali", "resource": "secure-doc-1", "ttl": 3600}'
 ```
 
 **Doğrulama**: Artık `ali` kullanıcısı `secure-doc-1` için kupon alabilir.
@@ -162,11 +162,12 @@ curl.exe -X POST "http://localhost:8000/v1/delegations" `
 curl -X POST "http://localhost:8000/v1/issue" \
      -H "Content-Type: application/json" \
      -d '{"audience": "app-srv", "scope": "read", "resource": "secure-doc-1"}'
-
+```
+```powershell
 # PowerShell
-curl.exe -X POST "http://localhost:8000/v1/issue" `
-     -H "Content-Type: application/json" `
-     -d "{\"audience\": \"app-srv\", \"scope\": \"read\", \"resource\": \"secure-doc-1\"}"
+Invoke-RestMethod -Method POST -Uri "http://localhost:8000/v1/issue" `
+     -ContentType "application/json" `
+     -Body '{"audience": "app-srv", "scope": "read", "resource": "secure-doc-1"}'
 ```
 
 ### 2. Toplu Kontrol (Partial Evaluation)
@@ -181,9 +182,9 @@ curl -X POST "http://localhost:8000/v1/filter-authorized" \
 
 **PowerShell:**
 ```powershell
-curl.exe -X POST "http://localhost:8000/v1/filter-authorized" `
-     -H "Content-Type: application/json" `
-     -d "{\"resources\": [\"secure-doc-1\", \"forbidden-doc-99\"], \"action\": \"read\", \"audience\": \"app-srv\"}"
+Invoke-RestMethod -Method POST -Uri "http://localhost:8000/v1/filter-authorized" `
+     -ContentType "application/json" `
+     -Body '{"resources": ["secure-doc-1", "forbidden-doc-99"], "action": "read", "audience": "app-srv"}'
 ```
 
 ---
