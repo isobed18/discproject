@@ -1,17 +1,18 @@
 import sys
 from jose import jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Simple script to generate a dummy OIDC token for testing
 # Usage: python create_test_token.py <subject>
 
 def create_dummy_token(subject="test-user"):
+    now = datetime.now(timezone.utc)
     payload = {
         "iss": "https://accounts.google.com",
         "sub": subject,
         "aud": "disc-api",
-        "iat": datetime.utcnow(),
-        "exp": datetime.utcnow() + timedelta(hours=1),
+        "iat": now,
+        "exp": now + timedelta(hours=1),
         "name": f"Test User ({subject})",
         "email": f"{subject}@example.com"
     }
