@@ -1,11 +1,54 @@
 from fastapi import APIRouter, HTTPException, Depends, Header, Request
 from typing import Optional
 from datetime import datetime, timezone
-from .models import CouponRequest, CouponResponse, VerifyRequest, VerifyResponse, RevokeRequest, RevokeResponse
+from .models import CouponRequest, CouponResponse, VerifyRequest, VerifyResponse, RevokeRequest, RevokeResponse, DelegationRequest, PartialEvalRequest
 from ..core.security import create_coupon, verify_coupon, verify_oidc_token, get_mtls_identity
 from ..services.revocation import revoke_jti, is_jti_revoked
+from ..services.delegation import add_delegation, get_delegations_for_resource
 
 router = APIRouter()
+
+@router.post("/delegations")
+def create_delegation(req: DelegationRequest):
+    # In a real app, we would verify that the caller OWNS the resource.
+    # For MVP, we allow anyone to create a delegation.
+    add_delegation("owner", req.delegate, req.resource, req.ttl)
+    return {"status": "delegation_created", "delegate": req.delegate, "resource": req.resource}
+
+@router.post("/filter-authorized")
+def filter_authorized_resources(req: PartialEvalRequest):
+    """
+    Demonstrates Partial Evaluation (or Batch Check).
+    Takes a list of resources and returns only those that are allowed.
+    """
+    from ..core.policy import policy_engine
+    allowed_resources = []
+    
+    # In a real OPA Partial Eval, we would send the policy + unknown input 
+    # and get back the conditions. 
+    # For MVP, we iterate (Batch Check) which is a common specific case of Partial Eval usage.
+    
+    for res in req.resources:
+        # Mocking the input context. In reality this depends on WHO is asking.
+        # We assume "anonymous" or "test-user" for this open endpoint unless auth header is parsed.
+        # For simplicity, we just check against the hardcoded policy logic or OPA.
+        
+        # We'll use the check_permission method.
+        # Note: "token" part mocks the requester having a token for this resource
+        # purely to see if the POLICY (delegation/admin) would allow it.
+        
+        input_data = {
+            "resource": res,
+            "audience": req.audience,
+            "scope": req.action,
+            "token": {"sub": "test-user", "aud": req.audience, "scope": req.action},
+            "delegations": {res: get_delegations_for_resource(res)}
+        }
+        
+        if policy_engine.check_permission(input_data):
+            allowed_resources.append(res)
+            
+    return {"authorized": allowed_resources}
 
 @router.post("/issue", response_model=CouponResponse)
 def issue_coupon(
@@ -23,9 +66,6 @@ def issue_coupon(
                 user_id = claims.get("sub", "unknown")
         except Exception:
             pass # Fail open for MVP if no token, or enforce? 
-            # Let's enforce if it looks like a token was attempted but failed.
-            # For MVP simplicity, if no token, we default to "test-user" or "anonymous"
-            # unless we want to strictly enforce it.
             
     # 2. mTLS Identity
     mtls_id = get_mtls_identity(request.headers)
@@ -33,27 +73,25 @@ def issue_coupon(
     # Policy Check (OPA)
     from ..core.policy import policy_engine
     
-    # Construct the input for OPA
-    # ideally we pass the full token claims, but for now we pass what we have
-    # We haven't created the token yet, but we know what will be in it.
-    # Typically OPA checks happen *before* issuance based on the requester's identity (OIDC/mTLS)
-    # AND the requested parameters (scope, audience).
+    # Fetch real delegations if a resource is specified
+    delegated_users = []
+    if req.resource:
+        delegated_users = get_delegations_for_resource(req.resource)
     
+    # Construct the input for OPA
     policy_input = {
         "audience": req.audience,
         "scope": req.scope,
         "token": {
             "sub": user_id,
-            "aud": req.audience, # The audience of the token we ARE ABOUT TO MINT
-            "scope": req.scope # The scope we ARE ABOUT TO MINT
+            "aud": req.audience, 
+            "scope": req.scope
         },
-        # For delegation mockup:
         "delegations": {
-            # Mock delegation: "resource-123" can be accessed by "user_a" (or whoever the user_id is)
-            # In a real app, you'd fetch this from DB
-            "resource-123": ["test-user", "anonymous"] 
+            # Pass the delegations for the requested resource
+            req.resource if req.resource else "global": delegated_users 
         },
-        "resource": "resource-123" # Mock resource for checking delegation
+        "resource": req.resource
     }
     
     allowed = policy_engine.check_permission(policy_input)

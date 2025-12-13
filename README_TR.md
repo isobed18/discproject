@@ -98,6 +98,41 @@ Yeni katkıda bulunacaklar için kod tabanının detaylı dökümü:
 
 ---
 
+---
+
+## 🛡️ OPA Politika Motoru Kurulumu (Önemli)
+
+> [!IMPORTANT]
+> **OPA Özelliği (Policy Engine) MVP'de eksikti.**
+> Lütfen bundan sonra `main` branch'in bu versiyonunu kullanın. Tutarlılık için herkesin acilen `pull` etmesi gerekmektedir.
+
+Proje artık yetkilendirme kararları için **Open Policy Agent (OPA)** kullanmaktadır.
+
+### 1. OPA'yı Yerel Olarak Çalıştırma
+Politikaları katı bir şekilde uygulamak için bir OPA sunucusu çalıştırmalısınız. En kolay yol Docker kullanmaktır:
+
+```bash
+docker run -p 8181:8181 openpolicyagent/opa:latest-static run --server --addr :8181
+```
+
+### 2. Politikaları Yükleme
+OPA çalıştıktan sonra, Rego politikasını yükleyin:
+
+```bash
+curl -X PUT --data-binary @backend/policies/main.rego http://localhost:8181/v1/policies/disc/authz
+```
+
+### 3. Geliştirici Modunu (Dev Mode) Kapatma
+Varsayılan olarak backend `DEV_MODE=True` ile çalışır. Bu mod, OPA kapalı olsa bile isteklere **izin verir** (Fail-Open), böylece geliştirme süreci bloklanmaz.
+Gerçek denetimi test etmek için:
+1.  `backend/core/config.py` dosyasını açın.
+2.  `DEV_MODE = False` yapın.
+3.  Backend'i yeniden başlatın.
+
+Artık OPA çalışmıyorsa veya politika erişimi reddediyorsa, istekleriniz reddedilecektir (403 Forbidden).
+
+---
+
 ## 📖 Kullanım Kılavuzu
 
 ### 1. CLI Kullanımı
