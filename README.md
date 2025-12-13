@@ -151,7 +151,7 @@ Allows a user to temporarily grant access to their resource to another user.
 ```bash
 curl -X POST "http://localhost:8000/v1/delegations" \
      -H "Content-Type: application/json" \
-     -d '{"delegate": "test-user", "resource": "secure-doc-1", "ttl": 3600}'
+     -d '{"delegate": "anonymous", "resource": "secure-doc-1", "ttl": 3600}'
 ```
 
 **PowerShell:**
@@ -159,10 +159,10 @@ curl -X POST "http://localhost:8000/v1/delegations" \
 ```powershell
 Invoke-RestMethod -Method POST -Uri "http://localhost:8000/v1/delegations" `
      -ContentType "application/json" `
-     -Body '{"delegate": "test-user", "resource": "secure-doc-1", "ttl": 3600}'
+     -Body '{"delegate": "anonymous", "resource": "secure-doc-1", "ttl": 3600}'
 ```
 
-**Verification:** Now `test-user` can request a coupon for `secure-doc-1`.
+**Verification:** Now the guest (anonymous) can request a coupon for `secure-doc-1`.
 ```bash
 # Bash
 curl -X POST "http://localhost:8000/v1/issue" \
@@ -178,7 +178,6 @@ Invoke-RestMethod -Method POST -Uri "http://localhost:8000/v1/issue" `
 
 ### 2. Partial Evaluation (Toplu Kontrol)
 Ask the system: "Which of these resources can I access?" efficiently.
-*Note: This endpoint mocks the requester as `test-user` for demonstration purposes.*
 
 **Bash / CMD:**
 ```bash
@@ -193,7 +192,7 @@ Invoke-RestMethod -Method POST -Uri "http://localhost:8000/v1/filter-authorized"
      -ContentType "application/json" `
      -Body '{"resources": ["secure-doc-1", "forbidden-doc-99"], "action": "read", "audience": "app-srv"}'
 ```
-*Result:* Should return `["secure-doc-1"]` (since we delegated it to `test-user`). `forbidden-doc-99` should be absent.
+*Result:* Should return `["secure-doc-1"]` (since we delegated it to `anonymous`). `forbidden-doc-99` should be absent.
 
 ---
 

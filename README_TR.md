@@ -151,7 +151,7 @@ Bir kullanıcı, kendi kaynağına başkasının erişmesine izin verir.
 ```bash
 curl -X POST "http://localhost:8000/v1/delegations" \
      -H "Content-Type: application/json" \
-     -d '{"delegate": "test-user", "resource": "secure-doc-1", "ttl": 3600}'
+     -d '{"delegate": "anonymous", "resource": "secure-doc-1", "ttl": 3600}'
 ```
 
 **PowerShell:**
@@ -159,10 +159,10 @@ curl -X POST "http://localhost:8000/v1/delegations" \
 ```powershell
 Invoke-RestMethod -Method POST -Uri "http://localhost:8000/v1/delegations" `
      -ContentType "application/json" `
-     -Body '{"delegate": "test-user", "resource": "secure-doc-1", "ttl": 3600}'
+     -Body '{"delegate": "anonymous", "resource": "secure-doc-1", "ttl": 3600}'
 ```
 
-**Doğrulama**: Artık `test-user` kullanıcısı `secure-doc-1` için kupon alabilir.
+**Doğrulama**: Artık misafir (anonymous) `secure-doc-1` için kupon alabilir.
 ```bash
 # Bash
 curl -X POST "http://localhost:8000/v1/issue" \
@@ -178,7 +178,6 @@ Invoke-RestMethod -Method POST -Uri "http://localhost:8000/v1/issue" `
 
 ### 2. Toplu Kontrol (Partial Evaluation)
 Sisteme "Bu dosyalardan hangilerine yetkim var?" diye sormak için kullanılır.
-*Not: Bu endpoint, test kolaylığı için isteği `test-user` yapıyor gibi varsayar.*
 
 **Bash / CMD:**
 ```bash
