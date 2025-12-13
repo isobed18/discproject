@@ -118,11 +118,86 @@ docker run -p 8181:8181 openpolicyagent/opa:latest-static run --server --addr :8
 ### 2. Politikaları Yükleme
 OPA çalıştıktan sonra, Rego politikasını yükleyin:
 
+**Bash / Command Prompt (cmd.exe):**
 ```bash
 curl -X PUT --data-binary @backend/policies/main.rego http://localhost:8181/v1/policies/disc/authz
 ```
 
+**PowerShell (Windows):**
+PowerShell'de `curl` komutu farklı çalışır. Git Bash yüklüyse `curl.exe` kullanın veya şu komutu çalıştırın:
+```powershell
+Invoke-RestMethod -Method PUT -Uri "http://localhost:8181/v1/policies/disc/authz" -Body (Get-Content backend/policies/main.rego -Raw)
+```
+
 ### 3. Geliştirici Modunu (Dev Mode) Kapatma
+Varsayılan olarak backend `DEV_MODE=True` ile çalışır. Bu mod, OPA kapalı olsa bile isteklere **izin verir** (Fail-Open), böylece geliştirme süreci bloklanmaz.
+Gerçek denetimi test etmek için:
+1.  `backend/core/config.py` dosyasını açın.
+2.  `DEV_MODE = False` yapın.
+3.  Backend'i yeniden başlatın.
+
+Artık OPA çalışmıyorsa veya politika erişimi reddediyorsa, istekleriniz reddedilecektir (403 Forbidden).
+
+---
+
+## 🧪 Yeni Özelliklerin Test Edilmesi (3. Hafta)
+
+**Delegasyon** ve **Kısmi Değerlendirme (Partial Eval)** özelliklerini test etmek için aşağıdaki adımları izleyin.
+
+## 🧪 Yeni Özelliklerin Test Edilmesi (3. Hafta - Üretim Senaryosu)
+
+**Delegasyon** ve **Kısmi Değerlendirme** özelliklerini gerçekçi bir şekilde (Üretim ortamına uygun) test etmek için **Kimlik Doğrulama Tokenları (OIDC)** kullanmalıyız.
+
+### Ön Hazırlık (Token Üretme)
+Lokal geliştirmede gerçek bir Identity Provider (IdP) olmadığı için, test amaçlı geçerli bir token üretmemiz gerekir. Bunun için bir yardımcı script hazırladık:
+
+```bash
+# "ali" kullanıcısı için token üret
+python cli/create_test_token.py ali
+# Çıktı örneği: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+*Bu tokenı PowerShell'de bir değişkene atayın.*
+
+### 1. Delegasyon (Yetki Devri)
+"ali" kullanıcısına erişim verin.
+
+**PowerShell:**
+```powershell
+Invoke-RestMethod -Method POST -Uri "http://localhost:8000/v1/delegations" `
+     -ContentType "application/json" `
+     -Body '{"delegate": "ali", "resource": "secure-doc-1", "ttl": 3600}'
+```
+
+### 2. Toplu Kontrol (Token Kullanarak)
+Şimdi, sanki gerçekten **"ali"** giriş yapmış gibi tokenını kullanarak istek atalım.
+
+**PowerShell:**
+```powershell
+# 1. Tokenı al
+$Token = python cli/create_test_token.py ali
+
+# 2. Token ile istek at
+Invoke-RestMethod -Method POST -Uri "http://localhost:8000/v1/filter-authorized" `
+     -Headers @{Authorization=("Bearer " + $Token)} `
+     -ContentType "application/json" `
+     -Body '{"resources": ["secure-doc-1", "forbidden-doc-99"], "action": "read", "audience": "app-srv"}'
+```
+*Sonuç:* OPA, tokenın "ali"ye ait olduğunu görür, "ali"nin delegasyonu olduğunu doğrular ve `["secure-doc-1"]` cevabını verir.
+
+### 3. Kupon Alma (Token Kullanarak)
+Aynı şekilde, kaynak için PASETO kuponu isteyelim.
+
+**PowerShell:**
+```powershell
+Invoke-RestMethod -Method POST -Uri "http://localhost:8000/v1/issue" `
+     -Headers @{Authorization=("Bearer " + $Token)} `
+     -ContentType "application/json" `
+     -Body '{"audience": "app-srv", "scope": "read", "resource": "secure-doc-1"}'
+```
+
+---
+
+## 📖 Kullanım Kılavuzu
 Varsayılan olarak backend `DEV_MODE=True` ile çalışır. Bu mod, OPA kapalı olsa bile isteklere **izin verir** (Fail-Open), böylece geliştirme süreci bloklanmaz.
 Gerçek denetimi test etmek için:
 1.  `backend/core/config.py` dosyasını açın.

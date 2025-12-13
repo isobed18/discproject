@@ -16,12 +16,28 @@ def create_delegation(req: DelegationRequest):
     return {"status": "delegation_created", "delegate": req.delegate, "resource": req.resource}
 
 @router.post("/filter-authorized")
-def filter_authorized_resources(req: PartialEvalRequest):
+def filter_authorized_resources(
+    req: PartialEvalRequest,
+    request: Request,
+    authorization: Optional[str] = Header(None)
+):
     """
     Demonstrates Partial Evaluation (or Batch Check).
     Takes a list of resources and returns only those that are allowed.
     """
     from ..core.policy import policy_engine
+    
+    # 1. Identify the user (Extract from Token or default to anonymous)
+    user_id = "anonymous"
+    if authorization:
+        try:
+            scheme, token = authorization.split()
+            if scheme.lower() == "bearer":
+                claims = verify_oidc_token(token)
+                user_id = claims.get("sub", "unknown")
+        except Exception:
+            pass 
+
     allowed_resources = []
     
     # In a real OPA Partial Eval, we would send the policy + unknown input 
@@ -41,7 +57,7 @@ def filter_authorized_resources(req: PartialEvalRequest):
             "resource": res,
             "audience": req.audience,
             "scope": req.action,
-            "token": {"sub": "test-user", "aud": req.audience, "scope": req.action},
+            "token": {"sub": user_id, "aud": req.audience, "scope": "default"}, # Use real user_id
             "delegations": {res: get_delegations_for_resource(res)}
         }
         
@@ -85,7 +101,7 @@ def issue_coupon(
         "token": {
             "sub": user_id,
             "aud": req.audience, 
-            "scope": req.scope
+            "scope": "default" # Fix: Do not grant requested scope by default. Only allow if policy grants it (e.g. delegation).
         },
         "delegations": {
             # Pass the delegations for the requested resource

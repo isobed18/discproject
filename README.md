@@ -118,11 +118,100 @@ docker run -p 8181:8181 openpolicyagent/opa:latest-static run --server --addr :8
 ### 2. Uploading Policies
 Once OPA is running, upload the Rego policy:
 
+**Bash / Command Prompt:**
 ```bash
 curl -X PUT --data-binary @backend/policies/main.rego http://localhost:8181/v1/policies/disc/authz
 ```
 
+**PowerShell (Windows):**
+In PowerShell, `curl` is an alias for `Invoke-WebRequest`, which has different syntax. Use `curl.exe` explicitly if you have Git installed, or use:
+```powershell
+Invoke-RestMethod -Method PUT -Uri "http://localhost:8181/v1/policies/disc/authz" -Body (Get-Content backend/policies/main.rego -Raw)
+```
+
 ### 3. Disabling Dev Mode
+By default, the backend runs in `DEV_MODE=True`, which **allows** requests even if OPA is down (Fail-Open).
+To test actual enforcement:
+1.  Open `backend/core/config.py`.
+2.  Set `DEV_MODE = False`.
+3.  Restart the backend.
+
+Now, if OPA is not running or the policy denies access, your requests will be rejected (403 Forbidden).
+
+---
+
+## 🧪 Testing New Features (Week 3)
+
+We have implemented **Delegation** and **Partial Evaluation**.
+
+## 🧪 Testing New Features (Week 3 - Production Flow)
+
+We have implemented **Delegation** and **Partial Evaluation**.
+To test these features robustly (mimicking production), we must use **Authentication Tokens (OIDC)**.
+
+### Prerequisites (Generate Token)
+Since we don't have a real Identity Provider (IdP) for local dev, generating a valid token is necessary. We provided a helper script:
+
+```bash
+# Generate a token for user "ali"
+python cli/create_test_token.py ali
+# Output example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+*Save this token as `$TOKEN` (bash) or `$env:TOKEN` (PowerShell).*
+
+### 1. Delegation (Yetki Devri)
+Grant access to "ali".
+*Note: Any authorized user (or system admin) can create delegations.*
+
+**Bash:**
+```bash
+curl -X POST "http://localhost:8000/v1/delegations" \
+     -H "Content-Type: application/json" \
+     -d '{"delegate": "ali", "resource": "secure-doc-1", "ttl": 3600}'
+```
+
+**PowerShell:**
+```powershell
+Invoke-RestMethod -Method POST -Uri "http://localhost:8000/v1/delegations" `
+     -ContentType "application/json" `
+     -Body '{"delegate": "ali", "resource": "secure-doc-1", "ttl": 3600}'
+```
+
+### 2. Partial Evaluation (With Token)
+Now, call the endpoint **AS "ali"** using the token.
+
+**Bash:**
+```bash
+curl -X POST "http://localhost:8000/v1/filter-authorized" \
+     -H "Authorization: Bearer <PASTE_TOKEN_HERE>" \
+     -H "Content-Type: application/json" \
+     -d '{"resources": ["secure-doc-1", "forbidden-doc-99"], "action": "read", "audience": "app-srv"}'
+```
+
+**PowerShell:**
+```powershell
+$Token = python cli/create_test_token.py ali
+Invoke-RestMethod -Method POST -Uri "http://localhost:8000/v1/filter-authorized" `
+     -Headers @{Authorization=("Bearer " + $Token)} `
+     -ContentType "application/json" `
+     -Body '{"resources": ["secure-doc-1", "forbidden-doc-99"], "action": "read", "audience": "app-srv"}'
+```
+*Result:* Returns `["secure-doc-1"]` because OPA sees the token belongs to `ali` and `ali` has a delegation.
+
+### 3. Issue Coupon (With Token)
+Obtain the final PASETO coupon for the resource.
+
+**PowerShell:**
+```powershell
+Invoke-RestMethod -Method POST -Uri "http://localhost:8000/v1/issue" `
+     -Headers @{Authorization=("Bearer " + $Token)} `
+     -ContentType "application/json" `
+     -Body '{"audience": "app-srv", "scope": "read", "resource": "secure-doc-1"}'
+```
+
+---
+
+## 📖 Usage Guide
 By default, the backend runs in `DEV_MODE=True`, which **allows** requests even if OPA is down (Fail-Open).
 To test actual enforcement:
 1.  Open `backend/core/config.py`.
