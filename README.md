@@ -98,6 +98,41 @@ Here is a breakdown of the codebase for new contributors:
 
 ---
 
+---
+
+## 🛡️ OPA Policy Engine Setup (Important)
+
+> [!IMPORTANT]
+> **OPA Feature was missing for initial MVP.**
+> Please use this version of `main` from now on. Everybody should pull the new `main` immediately to ensure consistency.
+
+The project now integrates **Open Policy Agent (OPA)** for authorization decisions.
+
+### 1. Running OPA Locally
+To enforce policies strictly, you must run an OPA server. The easiest way is via Docker:
+
+```bash
+docker run -p 8181:8181 openpolicyagent/opa:latest-static run --server --addr :8181
+```
+
+### 2. Uploading Policies
+Once OPA is running, upload the Rego policy:
+
+```bash
+curl -X PUT --data-binary @backend/policies/main.rego http://localhost:8181/v1/policies/disc/authz
+```
+
+### 3. Disabling Dev Mode
+By default, the backend runs in `DEV_MODE=True`, which **allows** requests even if OPA is down (Fail-Open).
+To test actual enforcement:
+1.  Open `backend/core/config.py`.
+2.  Set `DEV_MODE = False`.
+3.  Restart the backend.
+
+Now, if OPA is not running or the policy denies access, your requests will be rejected (403 Forbidden).
+
+---
+
 ## 📖 Usage Guide
 
 ### 1. Using the CLI
