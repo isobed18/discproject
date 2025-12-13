@@ -130,7 +130,13 @@ Invoke-RestMethod -Method PUT -Uri "http://localhost:8181/v1/policies/disc/authz
 ```
 
 ### 3. Disabling Dev Mode
-... (Same as before)
+By default, the backend runs in `DEV_MODE=True`, which **allows** requests even if OPA is down (Fail-Open).
+To test actual enforcement:
+1.  Open `backend/core/config.py`.
+2.  Set `DEV_MODE = False`.
+3.  Restart the backend.
+
+Now, if OPA is not running or the policy denies access, your requests will be rejected (403 Forbidden).
 
 ---
 
@@ -145,7 +151,7 @@ Allows a user to temporarily grant access to their resource to another user.
 ```bash
 curl -X POST "http://localhost:8000/v1/delegations" \
      -H "Content-Type: application/json" \
-     -d '{"delegate": "ali", "resource": "secure-doc-1", "ttl": 3600}'
+     -d '{"delegate": "test-user", "resource": "secure-doc-1", "ttl": 3600}'
 ```
 
 **PowerShell:**
@@ -153,10 +159,10 @@ curl -X POST "http://localhost:8000/v1/delegations" \
 ```powershell
 Invoke-RestMethod -Method POST -Uri "http://localhost:8000/v1/delegations" `
      -ContentType "application/json" `
-     -Body '{"delegate": "ali", "resource": "secure-doc-1", "ttl": 3600}'
+     -Body '{"delegate": "test-user", "resource": "secure-doc-1", "ttl": 3600}'
 ```
 
-**Verification:** Now `ali` can request a coupon for `secure-doc-1`.
+**Verification:** Now `test-user` can request a coupon for `secure-doc-1`.
 ```bash
 # Bash
 curl -X POST "http://localhost:8000/v1/issue" \
@@ -172,6 +178,7 @@ Invoke-RestMethod -Method POST -Uri "http://localhost:8000/v1/issue" `
 
 ### 2. Partial Evaluation (Toplu Kontrol)
 Ask the system: "Which of these resources can I access?" efficiently.
+*Note: This endpoint mocks the requester as `test-user` for demonstration purposes.*
 
 **Bash / CMD:**
 ```bash
@@ -186,6 +193,7 @@ Invoke-RestMethod -Method POST -Uri "http://localhost:8000/v1/filter-authorized"
      -ContentType "application/json" `
      -Body '{"resources": ["secure-doc-1", "forbidden-doc-99"], "action": "read", "audience": "app-srv"}'
 ```
+*Result:* Should return `["secure-doc-1"]` (since we delegated it to `test-user`). `forbidden-doc-99` should be absent.
 
 ---
 

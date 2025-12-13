@@ -41,7 +41,7 @@ def filter_authorized_resources(req: PartialEvalRequest):
             "resource": res,
             "audience": req.audience,
             "scope": req.action,
-            "token": {"sub": "test-user", "aud": req.audience, "scope": req.action},
+            "token": {"sub": "test-user", "aud": req.audience, "scope": "default"}, # Fix: Do not grant requested scope by default
             "delegations": {res: get_delegations_for_resource(res)}
         }
         
@@ -85,7 +85,7 @@ def issue_coupon(
         "token": {
             "sub": user_id,
             "aud": req.audience, 
-            "scope": req.scope
+            "scope": "default" # Fix: Do not grant requested scope by default. Only allow if policy grants it (e.g. delegation).
         },
         "delegations": {
             # Pass the delegations for the requested resource

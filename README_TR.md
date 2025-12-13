@@ -130,7 +130,13 @@ Invoke-RestMethod -Method PUT -Uri "http://localhost:8181/v1/policies/disc/authz
 ```
 
 ### 3. Geliştirici Modunu (Dev Mode) Kapatma
-... (Eski içerik aynı)
+Varsayılan olarak backend `DEV_MODE=True` ile çalışır. Bu mod, OPA kapalı olsa bile isteklere **izin verir** (Fail-Open), böylece geliştirme süreci bloklanmaz.
+Gerçek denetimi test etmek için:
+1.  `backend/core/config.py` dosyasını açın.
+2.  `DEV_MODE = False` yapın.
+3.  Backend'i yeniden başlatın.
+
+Artık OPA çalışmıyorsa veya politika erişimi reddediyorsa, istekleriniz reddedilecektir (403 Forbidden).
 
 ---
 
@@ -145,7 +151,7 @@ Bir kullanıcı, kendi kaynağına başkasının erişmesine izin verir.
 ```bash
 curl -X POST "http://localhost:8000/v1/delegations" \
      -H "Content-Type: application/json" \
-     -d '{"delegate": "ali", "resource": "secure-doc-1", "ttl": 3600}'
+     -d '{"delegate": "test-user", "resource": "secure-doc-1", "ttl": 3600}'
 ```
 
 **PowerShell:**
@@ -153,10 +159,10 @@ curl -X POST "http://localhost:8000/v1/delegations" \
 ```powershell
 Invoke-RestMethod -Method POST -Uri "http://localhost:8000/v1/delegations" `
      -ContentType "application/json" `
-     -Body '{"delegate": "ali", "resource": "secure-doc-1", "ttl": 3600}'
+     -Body '{"delegate": "test-user", "resource": "secure-doc-1", "ttl": 3600}'
 ```
 
-**Doğrulama**: Artık `ali` kullanıcısı `secure-doc-1` için kupon alabilir.
+**Doğrulama**: Artık `test-user` kullanıcısı `secure-doc-1` için kupon alabilir.
 ```bash
 # Bash
 curl -X POST "http://localhost:8000/v1/issue" \
@@ -172,6 +178,7 @@ Invoke-RestMethod -Method POST -Uri "http://localhost:8000/v1/issue" `
 
 ### 2. Toplu Kontrol (Partial Evaluation)
 Sisteme "Bu dosyalardan hangilerine yetkim var?" diye sormak için kullanılır.
+*Not: Bu endpoint, test kolaylığı için isteği `test-user` yapıyor gibi varsayar.*
 
 **Bash / CMD:**
 ```bash
@@ -186,6 +193,7 @@ Invoke-RestMethod -Method POST -Uri "http://localhost:8000/v1/filter-authorized"
      -ContentType "application/json" `
      -Body '{"resources": ["secure-doc-1", "forbidden-doc-99"], "action": "read", "audience": "app-srv"}'
 ```
+*Sonuç:* Sadece yetkiniz olan (`secure-doc-1`) dönmeli. Yetki vermediğimiz `forbidden-doc-99` listede **olmamalıdır**.
 
 ---
 

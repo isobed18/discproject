@@ -2,11 +2,12 @@ import requests
 import json
 import sys
 
-BASE_URL = "http://localhost:8003/v1"
+BASE_URL = "http://localhost:8004/v1"
 
 def test_flow():
     print("--- 1. Testing Delegation ---")
-    d_payload = {"delegate": "ali", "resource": "secure-doc-1", "ttl": 3600}
+    # Note: We delegate to "anonymous" because our mock OIDC returns "anonymous" by default
+    d_payload = {"delegate": "anonymous", "resource": "secure-doc-1", "ttl": 3600}
     try:
         d_res = requests.post(f"{BASE_URL}/delegations", json=d_payload)
         print(f"Delegation Status: {d_res.status_code} {d_res.text}")
