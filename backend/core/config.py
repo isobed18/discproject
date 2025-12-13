@@ -12,6 +12,11 @@ class Settings(BaseSettings):
     # Redis
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
+
+    # Policy Engine uses OPA
+    OPA_URL: str = "http://localhost:8181/v1/data/disc/authz"
+    DEV_MODE: bool = True # For local dev without OPA, we fail-open
+
     
     class Config:
         env_file = ".env"
