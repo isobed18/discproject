@@ -45,3 +45,6 @@ frontend/dist/
 # Project Specific
 debug_*.py
 .pytest_cache/
+test_output.txt
+weeklytasks.txt
+

@@ -157,4 +157,8 @@ Sistemi test etmenin en kolay yolu CLI aracıdır.
 1.  **PASETO v4 (Public)**: İmzalama için Asimetrik Ed25519 anahtarları kullanıyoruz. Bu, sadece CA'nın kupon verebileceği, ancak herkesin (public key ile) doğrulayabileceği anlamına gelir.
 2.  **Sahiplik Kanıtı (PoP)**: Eğer kupon verilirken `X-Client-Cert-Hash` başlığı varsa, bu bilgi token içine (`cnf` claim) gömülür. Token'ı alan servis, token'ı sunan istemcinin bu sertifika hash'ine sahip olup olmadığını kontrol etmelidir.
 3.  **OIDC Entegrasyonu**: Sistem, kupon isteyen kişinin kimliğini doğrulamak için standart OIDC tokenlarını (Auth0, Keycloak vb.) kabul eder.
-4.  **Politika Uygulama**: Kupon verilmeden önce kurallar kontrol edilir (Örn: "Sadece internal-admin kullanıcısı admin yetkisi isteyebilir").
+4.  **Politika Uygulama (OPA)**:
+    *   Ayrıntılı yetkilendirme mantığı için **Open Policy Agent** entegrasyonu.
+    *   **Delegasyon Kuralları**: Rego politikaları aracılığıyla yetki devrini (Örn: Kullanıcı A, belirli kaynaklar için Kullanıcı B adına işlem yapabilir) destekler.
+    *   **Geliştirici Modu (Dev Mode)**: OPA olmadan yerel geliştirme için hataya dayanıklı (fail-open) çalışma modu.
+
