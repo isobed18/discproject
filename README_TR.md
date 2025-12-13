@@ -118,11 +118,57 @@ docker run -p 8181:8181 openpolicyagent/opa:latest-static run --server --addr :8
 ### 2. Politikaları Yükleme
 OPA çalıştıktan sonra, Rego politikasını yükleyin:
 
+**Bash / Command Prompt (cmd.exe):**
 ```bash
 curl -X PUT --data-binary @backend/policies/main.rego http://localhost:8181/v1/policies/disc/authz
 ```
 
+**PowerShell (Windows):**
+PowerShell'de `curl` komutu farklı çalışır. Git Bash yüklüyse `curl.exe` kullanın veya şu komutu çalıştırın:
+```powershell
+Invoke-RestMethod -Method PUT -Uri "http://localhost:8181/v1/policies/disc/authz" -Body (Get-Content backend/policies/main.rego -Raw)
+```
+
 ### 3. Geliştirici Modunu (Dev Mode) Kapatma
+... (Eski içerik aynı)
+
+---
+
+## 🧪 Yeni Özelliklerin Test Edilmesi (3. Hafta)
+
+**Delegasyon** ve **Kısmi Değerlendirme (Partial Eval)** özelliklerini test etmek için aşağıdaki adımları izleyin.
+*Not: Komutlar Bash formatındadır. PowerShell kullanıyorsanız `curl` yerine `curl.exe` yazın ve tırnak işaretlerine dikkat edin.*
+
+### 1. Delegasyon (Yetki Devri)
+Bir kullanıcı, kendi kaynağına başkasının erişmesine izin verir.
+
+*   **Komut**: `secure-doc-1` kaynağını `ali` kullanıcısına devret.
+    ```bash
+    curl -X POST "http://localhost:8000/v1/delegations" \
+         -H "Content-Type: application/json" \
+         -d '{"delegate": "ali", "resource": "secure-doc-1", "ttl": 3600}'
+    ```
+*   **Doğrulama**: Artık `ali` kullanıcısı `secure-doc-1` için kupon alabilir.
+    ```bash
+    curl -X POST "http://localhost:8000/v1/issue" \
+         -H "Content-Type: application/json" \
+         -d '{"audience": "app-srv", "scope": "read", "resource": "secure-doc-1"}'
+    ```
+
+### 2. Toplu Kontrol (Partial Evaluation)
+Sisteme "Bu dosyalardan hangilerine yetkim var?" diye sormak için kullanılır.
+
+*   **Komut**: Birden fazla dosya için yetki kontrolü yap.
+    ```bash
+    curl -X POST "http://localhost:8000/v1/filter-authorized" \
+         -H "Content-Type: application/json" \
+         -d '{"resources": ["secure-doc-1", "forbidden-doc-99"], "action": "read", "audience": "app-srv"}'
+    ```
+*   **Sonuç**: Sadece yetkiniz olan kaynakların listesi döner (Örn: `["secure-doc-1"]`).
+
+---
+
+## 📖 Kullanım Kılavuzu
 Varsayılan olarak backend `DEV_MODE=True` ile çalışır. Bu mod, OPA kapalı olsa bile isteklere **izin verir** (Fail-Open), böylece geliştirme süreci bloklanmaz.
 Gerçek denetimi test etmek için:
 1.  `backend/core/config.py` dosyasını açın.

@@ -118,11 +118,56 @@ docker run -p 8181:8181 openpolicyagent/opa:latest-static run --server --addr :8
 ### 2. Uploading Policies
 Once OPA is running, upload the Rego policy:
 
+**Bash / Command Prompt:**
 ```bash
 curl -X PUT --data-binary @backend/policies/main.rego http://localhost:8181/v1/policies/disc/authz
 ```
 
+**PowerShell (Windows):**
+In PowerShell, `curl` is an alias for `Invoke-WebRequest`, which has different syntax. Use `curl.exe` explicitly if you have Git installed, or use:
+```powershell
+Invoke-RestMethod -Method PUT -Uri "http://localhost:8181/v1/policies/disc/authz" -Body (Get-Content backend/policies/main.rego -Raw)
+```
+
 ### 3. Disabling Dev Mode
+... (Same as before)
+
+---
+
+## 🧪 Testing New Features (Week 3)
+
+We have implemented **Delegation** and **Partial Evaluation**. Here is how to verify them using `curl` (or `curl.exe` in PowerShell):
+
+### 1. Delegation (Yetki Devri)
+Allows a user to temporarily grant access to their resource to another user.
+
+*   **Command**: Delegate `secure-doc-1` to user `ali`.
+    ```bash
+    curl -X POST "http://localhost:8000/v1/delegations" \
+         -H "Content-Type: application/json" \
+         -d '{"delegate": "ali", "resource": "secure-doc-1", "ttl": 3600}'
+    ```
+*   **Verification**: Now `ali` can request a coupon for `secure-doc-1`.
+    ```bash
+    curl -X POST "http://localhost:8000/v1/issue" \
+         -H "Content-Type: application/json" \
+         -d '{"audience": "app-srv", "scope": "read", "resource": "secure-doc-1"}'
+    ```
+
+### 2. Partial Evaluation (Toplu Kontrol)
+Ask the system: "Which of these resources can I access?" efficiently.
+
+*   **Command**: Check access for multiple files.
+    ```bash
+    curl -X POST "http://localhost:8000/v1/filter-authorized" \
+         -H "Content-Type: application/json" \
+         -d '{"resources": ["secure-doc-1", "forbidden-doc-99"], "action": "read", "audience": "app-srv"}'
+    ```
+*   **Result**: Returns a list of authorized resources (e.g., `["secure-doc-1"]`).
+
+---
+
+## 📖 Usage Guide
 By default, the backend runs in `DEV_MODE=True`, which **allows** requests even if OPA is down (Fail-Open).
 To test actual enforcement:
 1.  Open `backend/core/config.py`.

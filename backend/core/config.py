@@ -15,7 +15,7 @@ class Settings(BaseSettings):
 
     # Policy Engine uses OPA
     OPA_URL: str = "http://localhost:8181/v1/data/disc/authz"
-    DEV_MODE: bool = True # For local dev without OPA, we fail-open
+    DEV_MODE: bool = False # For local dev without OPA, we fail-open
 
     
     class Config:
