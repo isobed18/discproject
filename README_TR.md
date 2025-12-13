@@ -63,7 +63,7 @@ Yeni katkıda bulunacaklar için kod tabanının detaylı dökümü:
 
 1.  **Depoyu klonlayın**:
     ```bash
-    git clone https://github.com/your-org/discproject.git
+    git clone https://github.com/isobed18/discproject.git
     cd discproject
     ```
 

@@ -63,7 +63,7 @@ Here is a breakdown of the codebase for new contributors:
 
 1.  **Clone the repository**:
     ```bash
-    git clone https://github.com/your-org/discproject.git
+    git clone https://github.com/isobed18/discproject.git
     cd discproject
     ```
 
