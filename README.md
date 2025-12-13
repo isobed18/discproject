@@ -136,34 +136,55 @@ Invoke-RestMethod -Method PUT -Uri "http://localhost:8181/v1/policies/disc/authz
 
 ## 🧪 Testing New Features (Week 3)
 
-We have implemented **Delegation** and **Partial Evaluation**. Here is how to verify them using `curl` (or `curl.exe` in PowerShell):
+We have implemented **Delegation** and **Partial Evaluation**.
 
 ### 1. Delegation (Yetki Devri)
 Allows a user to temporarily grant access to their resource to another user.
 
-*   **Command**: Delegate `secure-doc-1` to user `ali`.
-    ```bash
-    curl -X POST "http://localhost:8000/v1/delegations" \
-         -H "Content-Type: application/json" \
-         -d '{"delegate": "ali", "resource": "secure-doc-1", "ttl": 3600}'
-    ```
-*   **Verification**: Now `ali` can request a coupon for `secure-doc-1`.
-    ```bash
-    curl -X POST "http://localhost:8000/v1/issue" \
-         -H "Content-Type: application/json" \
-         -d '{"audience": "app-srv", "scope": "read", "resource": "secure-doc-1"}'
-    ```
+**Bash / CMD:**
+```bash
+curl -X POST "http://localhost:8000/v1/delegations" \
+     -H "Content-Type: application/json" \
+     -d '{"delegate": "ali", "resource": "secure-doc-1", "ttl": 3600}'
+```
+
+**PowerShell:**
+*(Note: Use double quotes for JSON keys/values, and escape inner quotes with backslash `\"` or use a variable)*
+```powershell
+curl.exe -X POST "http://localhost:8000/v1/delegations" `
+     -H "Content-Type: application/json" `
+     -d "{\"delegate\": \"ali\", \"resource\": \"secure-doc-1\", \"ttl\": 3600}"
+```
+
+**Verification:** Now `ali` can request a coupon for `secure-doc-1`.
+```bash
+# Bash
+curl -X POST "http://localhost:8000/v1/issue" \
+     -H "Content-Type: application/json" \
+     -d '{"audience": "app-srv", "scope": "read", "resource": "secure-doc-1"}'
+
+# PowerShell
+curl.exe -X POST "http://localhost:8000/v1/issue" `
+     -H "Content-Type: application/json" `
+     -d "{\"audience\": \"app-srv\", \"scope\": \"read\", \"resource\": \"secure-doc-1\"}"
+```
 
 ### 2. Partial Evaluation (Toplu Kontrol)
 Ask the system: "Which of these resources can I access?" efficiently.
 
-*   **Command**: Check access for multiple files.
-    ```bash
-    curl -X POST "http://localhost:8000/v1/filter-authorized" \
-         -H "Content-Type: application/json" \
-         -d '{"resources": ["secure-doc-1", "forbidden-doc-99"], "action": "read", "audience": "app-srv"}'
-    ```
-*   **Result**: Returns a list of authorized resources (e.g., `["secure-doc-1"]`).
+**Bash / CMD:**
+```bash
+curl -X POST "http://localhost:8000/v1/filter-authorized" \
+     -H "Content-Type: application/json" \
+     -d '{"resources": ["secure-doc-1", "forbidden-doc-99"], "action": "read", "audience": "app-srv"}'
+```
+
+**PowerShell:**
+```powershell
+curl.exe -X POST "http://localhost:8000/v1/filter-authorized" `
+     -H "Content-Type: application/json" `
+     -d "{\"resources\": [\"secure-doc-1\", \"forbidden-doc-99\"], \"action\": \"read\", \"audience\": \"app-srv\"}"
+```
 
 ---
 

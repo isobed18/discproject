@@ -137,34 +137,54 @@ Invoke-RestMethod -Method PUT -Uri "http://localhost:8181/v1/policies/disc/authz
 ## 🧪 Yeni Özelliklerin Test Edilmesi (3. Hafta)
 
 **Delegasyon** ve **Kısmi Değerlendirme (Partial Eval)** özelliklerini test etmek için aşağıdaki adımları izleyin.
-*Not: Komutlar Bash formatındadır. PowerShell kullanıyorsanız `curl` yerine `curl.exe` yazın ve tırnak işaretlerine dikkat edin.*
 
 ### 1. Delegasyon (Yetki Devri)
 Bir kullanıcı, kendi kaynağına başkasının erişmesine izin verir.
 
-*   **Komut**: `secure-doc-1` kaynağını `ali` kullanıcısına devret.
-    ```bash
-    curl -X POST "http://localhost:8000/v1/delegations" \
-         -H "Content-Type: application/json" \
-         -d '{"delegate": "ali", "resource": "secure-doc-1", "ttl": 3600}'
-    ```
-*   **Doğrulama**: Artık `ali` kullanıcısı `secure-doc-1` için kupon alabilir.
-    ```bash
-    curl -X POST "http://localhost:8000/v1/issue" \
-         -H "Content-Type: application/json" \
-         -d '{"audience": "app-srv", "scope": "read", "resource": "secure-doc-1"}'
-    ```
+**Bash / CMD:**
+```bash
+curl -X POST "http://localhost:8000/v1/delegations" \
+     -H "Content-Type: application/json" \
+     -d '{"delegate": "ali", "resource": "secure-doc-1", "ttl": 3600}'
+```
+
+**PowerShell:**
+*(Not: JSON içinde çift tırnak kullanın ve iç tırnakları ters eğik çizgi `\"` ile kaçırın)*
+```powershell
+curl.exe -X POST "http://localhost:8000/v1/delegations" `
+     -H "Content-Type: application/json" `
+     -d "{\"delegate\": \"ali\", \"resource\": \"secure-doc-1\", \"ttl\": 3600}"
+```
+
+**Doğrulama**: Artık `ali` kullanıcısı `secure-doc-1` için kupon alabilir.
+```bash
+# Bash
+curl -X POST "http://localhost:8000/v1/issue" \
+     -H "Content-Type: application/json" \
+     -d '{"audience": "app-srv", "scope": "read", "resource": "secure-doc-1"}'
+
+# PowerShell
+curl.exe -X POST "http://localhost:8000/v1/issue" `
+     -H "Content-Type: application/json" `
+     -d "{\"audience\": \"app-srv\", \"scope\": \"read\", \"resource\": \"secure-doc-1\"}"
+```
 
 ### 2. Toplu Kontrol (Partial Evaluation)
 Sisteme "Bu dosyalardan hangilerine yetkim var?" diye sormak için kullanılır.
 
-*   **Komut**: Birden fazla dosya için yetki kontrolü yap.
-    ```bash
-    curl -X POST "http://localhost:8000/v1/filter-authorized" \
-         -H "Content-Type: application/json" \
-         -d '{"resources": ["secure-doc-1", "forbidden-doc-99"], "action": "read", "audience": "app-srv"}'
-    ```
-*   **Sonuç**: Sadece yetkiniz olan kaynakların listesi döner (Örn: `["secure-doc-1"]`).
+**Bash / CMD:**
+```bash
+curl -X POST "http://localhost:8000/v1/filter-authorized" \
+     -H "Content-Type: application/json" \
+     -d '{"resources": ["secure-doc-1", "forbidden-doc-99"], "action": "read", "audience": "app-srv"}'
+```
+
+**PowerShell:**
+```powershell
+curl.exe -X POST "http://localhost:8000/v1/filter-authorized" `
+     -H "Content-Type: application/json" `
+     -d "{\"resources\": [\"secure-doc-1\", \"forbidden-doc-99\"], \"action\": \"read\", \"audience\": \"app-srv\"}"
+```
 
 ---
 
