@@ -30,9 +30,35 @@ def issue_coupon(
     # 2. mTLS Identity
     mtls_id = get_mtls_identity(request.headers)
     
-    # Policy Check (Simulating OPA)
-    if "admin" in req.scope and req.audience != "internal-admin":
-        raise HTTPException(status_code=403, detail="Policy denied: 'admin' scope requires 'internal-admin' audience")
+    # Policy Check (OPA)
+    from ..core.policy import policy_engine
+    
+    # Construct the input for OPA
+    # ideally we pass the full token claims, but for now we pass what we have
+    # We haven't created the token yet, but we know what will be in it.
+    # Typically OPA checks happen *before* issuance based on the requester's identity (OIDC/mTLS)
+    # AND the requested parameters (scope, audience).
+    
+    policy_input = {
+        "audience": req.audience,
+        "scope": req.scope,
+        "token": {
+            "sub": user_id,
+            "aud": req.audience, # The audience of the token we ARE ABOUT TO MINT
+            "scope": req.scope # The scope we ARE ABOUT TO MINT
+        },
+        # For delegation mockup:
+        "delegations": {
+            # Mock delegation: "resource-123" can be accessed by "user_a" (or whoever the user_id is)
+            # In a real app, you'd fetch this from DB
+            "resource-123": ["test-user", "anonymous"] 
+        },
+        "resource": "resource-123" # Mock resource for checking delegation
+    }
+    
+    allowed = policy_engine.check_permission(policy_input)
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Policy denied by OPA")
 
     # Create the coupon
     cnf = {"x5t#S256": mtls_id.split(":")[1]} if mtls_id else None

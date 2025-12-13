@@ -157,4 +157,8 @@ The CLI is the easiest way to interact with the system.
 1.  **PASETO v4 (Public)**: We use Asymmetric Ed25519 keys for signing. This ensures that only the CA can issue coupons, but anyone with the public key can verify them.
 2.  **Proof-of-Possession (PoP)**: If an `X-Client-Cert-Hash` header is present during issuance, it is embedded in the token (`cnf` claim). The receiver should verify that the client presenting the token matches this hash.
 3.  **OIDC Integration**: The system accepts standard OIDC tokens (like from Auth0 or Keycloak) to identify *who* is requesting a coupon.
-4.  **Policy Enforcement**: Before issuing, the system checks rules (e.g., "Only internal-admin can request admin scopes").
+4.  **Policy Enforcement (OPA)**:
+    *   **Open Policy Agent** integration for fine-grained authorization logic.
+    *   **Delegation Rules**: Supports delegation of authority (e.g., User A can act on behalf of User B for specific resources) via Rego policies.
+    *   **Dev Mode**: Fail-open fallback for local development without OPA.
+
