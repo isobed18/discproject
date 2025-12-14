@@ -272,3 +272,61 @@ Sistemi test etmenin en kolay yolu CLI aracıdır.
     *   **Delegasyon Kuralları**: Rego politikaları aracılığıyla yetki devrini (Örn: Kullanıcı A, belirli kaynaklar için Kullanıcı B adına işlem yapabilir) destekler.
     *   **Geliştirici Modu (Dev Mode)**: OPA olmadan yerel geliştirme için hataya dayanıklı (fail-open) çalışma modu.
 
+## 📊 Observability & Operasyonel Olgunluk (Week 4)
+
+Bu proje, yalnızca fonksiyonel çalışmayı değil, üretim ortamına yakın operasyonel davranışı hedefler.  
+Week 4 kapsamında sistem operasyonel olgunluk (operational maturity) seviyesine taşınmıştır.
+
+---
+
+### 🔍 Metrikler (Prometheus)
+
+Backend, Prometheus uyumlu metrikleri aşağıdaki endpoint üzerinden sunar:
+
+* **GET /metrics**
+
+Toplanan temel metrikler:
+
+* **disc_coupon_issue_total** — üretilen kupon sayısı
+* **disc_issue_latency_seconds** — kupon üretim gecikmesi
+* **disc_revoke_total** — iptal edilen kupon sayısı
+* **disc_policy_deny_total** — OPA tarafından reddedilen istekler
+
+---
+
+### 📈 Grafana Dashboard Örnekleri
+
+* **Kupon Üretim Hızı (Issue Rate)**
+
+```
+rate(disc_coupon_issue_total[1m])
+```
+
+* **p95 Gecikme (Latency)**
+
+```
+histogram_quantile(
+  0.95,
+  sum(rate(disc_issue_latency_seconds_bucket[5m])) by (le)
+)
+```
+
+* **Revocation Freshness (İptal Güncelliği)**
+
+```
+time() - disc_last_revoke_timestamp
+```
+
+Bu paneller, sistemin yük altında davranışını, yetkilendirme gecikmelerini ve iptal mekanizmasının tutarlılığını gözlemlemeyi sağlar.
+
+---
+
+### 🛡️ Fail-Closed Güvenlik Davranışı
+
+Sistem, yetkilendirme kararları için harici **Open Policy Agent (OPA)** kullandığından aşağıdaki güvenlik davranışlarını sergiler:
+
+* OPA erişilebilir değilse → **/v1/issue → 503 Service Unavailable**
+* OPA erişilebilir fakat politika reddederse → **403 Forbidden**
+* **DEV_MODE = False** iken varsayılan davranış **fail-closed**’dır
+
+Bu yaklaşım, yanlışlıkla yetki verilmesini engeller ve **secure-by-default** ilkesini uygular.

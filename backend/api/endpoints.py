@@ -5,6 +5,12 @@ from .models import CouponRequest, CouponResponse, VerifyRequest, VerifyResponse
 from ..core.security import create_coupon, verify_coupon, verify_oidc_token, get_mtls_identity
 from ..services.revocation import revoke_jti, is_jti_revoked
 from ..services.delegation import add_delegation, get_delegations_for_resource
+from ..core.metrics import (
+    COUPON_ISSUE_TOTAL, COUPON_VERIFY_TOTAL, COUPON_REVOKE_TOTAL,
+    ISSUE_LATENCY_SECONDS, VERIFY_LATENCY_SECONDS, REVOKE_LATENCY_SECONDS,
+    LAST_REVOKE_TS, now_unix,
+    OPA_DENY_TOTAL, OPA_UNAVAILABLE_TOTAL
+)
 
 router = APIRouter()
 
@@ -72,102 +78,136 @@ def issue_coupon(
     request: Request,
     authorization: Optional[str] = Header(None)
 ):
-    # 1. OIDC Authentication
-    user_id = "anonymous"
-    if authorization:
+    # ⏱️ LATENCY ÖLÇÜMÜ BAŞLIYOR
+    with ISSUE_LATENCY_SECONDS.time():
+
+        # 1. OIDC Authentication
+        user_id = "anonymous"
+        if authorization:
+            try:
+                scheme, token = authorization.split()
+                if scheme.lower() == "bearer":
+                    claims = verify_oidc_token(token)
+                    user_id = claims.get("sub", "unknown")
+            except Exception:
+                pass  # MVP / DEV_MODE için fail-open
+
+        # 2. mTLS Identity
+        mtls_id = get_mtls_identity(request.headers)
+
+        # 3. POLICY CHECK (OPA)
+        from ..core.policy import policy_engine
+
+        delegated_users = []
+        if req.resource:
+            delegated_users = get_delegations_for_resource(req.resource)
+
+        policy_input = {
+            "audience": req.audience,
+            "scope": req.scope,
+            "token": {
+                "sub": user_id,
+                "aud": req.audience,
+                "scope": req.scope
+            },
+            "delegations": {
+                req.resource if req.resource else "global": delegated_users
+            },
+            "resource": req.resource
+        }
+
         try:
-            scheme, token = authorization.split()
-            if scheme.lower() == "bearer":
-                claims = verify_oidc_token(token)
-                user_id = claims.get("sub", "unknown")
+            allowed = policy_engine.check_permission(policy_input)
         except Exception:
-            pass # Fail open for MVP if no token, or enforce? 
-            
-    # 2. mTLS Identity
-    mtls_id = get_mtls_identity(request.headers)
-    
-    # Policy Check (OPA)
-    from ..core.policy import policy_engine
-    
-    # Fetch real delegations if a resource is specified
-    delegated_users = []
-    if req.resource:
-        delegated_users = get_delegations_for_resource(req.resource)
-    
-    # Construct the input for OPA
-    policy_input = {
-        "audience": req.audience,
-        "scope": req.scope,
-        "token": {
-            "sub": user_id,
-            "aud": req.audience, 
-            "scope": "default" # Fix: Do not grant requested scope by default. Only allow if policy grants it (e.g. delegation).
-        },
-        "delegations": {
-            # Pass the delegations for the requested resource
-            req.resource if req.resource else "global": delegated_users 
-        },
-        "resource": req.resource
-    }
-    
-    allowed = policy_engine.check_permission(policy_input)
-    if not allowed:
-        raise HTTPException(status_code=403, detail="Policy denied by OPA")
+            # 🚨 OPA UNAVAILABLE (fail-closed path)
+            OPA_UNAVAILABLE_TOTAL.inc()
+            raise HTTPException(
+                status_code=503,
+                detail="OPA unavailable"
+            )
 
-    # Create the coupon
-    cnf = {"x5t#S256": mtls_id.split(":")[1]} if mtls_id else None
-    
-    token = create_coupon(
-        subject=user_id, 
-        audience=req.audience,
-        scope=req.scope,
-        ttl_seconds=req.ttl_seconds or 300,
-        cnf=cnf
-    )
-    
-    # We need to extract JTI to return it, or we can decode the token we just made
-    decoded = verify_coupon(token)
-    jti = decoded.get("jti")
+        if not allowed:
+            # 🚫 OPA DENY
+            OPA_DENY_TOTAL.inc()
+            raise HTTPException(
+                status_code=403,
+                detail="Policy denied by OPA"
+            )
 
-    # Log event
-    audit_logs.append({
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "event_type": "coupon_issued",
-        "actor": "test-user",
-        "action": "issue",
-        "resource": jti,
-        "details": {"audience": req.audience, "scope": req.scope}
-    })
-    
-    return CouponResponse(
-        coupon=token,
-        expires_in=req.ttl_seconds or 300,
-        jti=jti
-    )
+        # 4. CREATE COUPON
+        cnf = {"x5t#S256": mtls_id.split(":")[1]} if mtls_id else None
+
+        token = create_coupon(
+            subject=user_id, 
+            audience=req.audience,
+            scope=req.scope,
+            ttl_seconds=req.ttl_seconds or 300,
+            cnf=cnf
+        )
+
+        decoded = verify_coupon(token)
+        jti = decoded.get("jti")
+
+        # 5. AUDIT LOG
+        audit_logs.append({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "event_type": "coupon_issued",
+            "actor": user_id,
+            "action": "issue",
+            "resource": jti,
+            "details": {
+                "audience": req.audience,
+                "scope": req.scope
+            }
+        })
+
+        # ✅ SUCCESS COUNTER
+        COUPON_ISSUE_TOTAL.inc()
+
+        return CouponResponse(
+            coupon=token,
+            expires_in=req.ttl_seconds or 300,
+            jti=jti
+        )
 
 @router.post("/verify", response_model=VerifyResponse)
 def verify_token(req: VerifyRequest):
-    try:
-        claims = verify_coupon(req.coupon)
-        
-        # Check revocation
-        jti = claims.get("jti")
-        if jti and is_jti_revoked(jti):
-            return VerifyResponse(valid=False, error="revoked")
-            
-        return VerifyResponse(valid=True, claims=claims)
-    except Exception as e:
-        return VerifyResponse(valid=False, error=str(e))
+    with VERIFY_LATENCY_SECONDS.time():
+        try:
+            claims = verify_coupon(req.coupon)
+
+            # Check revocation
+            jti = claims.get("jti")
+            if jti and is_jti_revoked(jti):
+                return VerifyResponse(valid=False, error="revoked")
+
+            return VerifyResponse(valid=True, claims=claims)
+
+        except Exception as e:
+            return VerifyResponse(valid=False, error=str(e))
+        finally:
+            # ✅ Always count verify attempts
+            COUPON_VERIFY_TOTAL.inc()
+
 
 @router.post("/revoke", response_model=RevokeResponse)
 def revoke_token(req: RevokeRequest):
-    # ... (existing code)
-    revoke_jti(req.jti, ttl_seconds=3600, reason=req.reason)
-    
+    with REVOKE_LATENCY_SECONDS.time():
+        revoke_jti(
+            req.jti,
+            ttl_seconds=3600,
+            reason=req.reason
+        )
+
+    # ✅ Metrics
+    COUPON_REVOKE_TOTAL.inc()
+    LAST_REVOKE_TS.set(now_unix())
+
     return RevokeResponse(
         status="revoked",
         revoked_at=datetime.now(timezone.utc).isoformat()
     )
+
 
 # Mock in-memory audit log for MVP
 audit_logs = []
