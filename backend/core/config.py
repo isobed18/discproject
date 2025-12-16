@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     # DEV_MODE: If True, it allows requests even if OPA is unreachable (Fail-Open)
     # Set to False for Production (Fail-Closed)
     DEV_MODE: bool = True 
+    
+    # Kafka Configuration
+    KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092" 
+  
+    KAFKA_TOPIC_AUDIT: str = "disc-audit-logs"
 
     class Config:
         env_file = ".env"

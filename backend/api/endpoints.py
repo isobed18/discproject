@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, Header, Request
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime, timezone
 
 from .models import (
@@ -10,18 +10,31 @@ from ..core.security import create_coupon, verify_coupon, verify_oidc_token, get
 from ..services.revocation import revoke_jti, is_jti_revoked
 from ..services.delegation import add_delegation, get_delegations_for_resource
 from ..core.policy import policy_engine
+# NEW: Import Audit Service
+from ..services.audit import audit_logger, audit_logs
 
 router = APIRouter()
 
+# --- Week 4: Audit Log Viewer Endpoint ---
+@router.get("/audit-logs")
+async def get_audit_logs():
+    """Returns the latest logs consumed from Kafka."""
+    return audit_logs
+
 # --- Week 3: Delegation Endpoint ---
 @router.post("/delegations")
-def create_delegation(req: DelegationRequest):
-    """
-    Creates a new delegation entry in Redis.
-    Allows 'req.delegate' to access 'req.resource'.
-    """
-    # In a real system, we would verify that the caller OWNS the resource first.
+async def create_delegation(req: DelegationRequest): # Changed to async
     add_delegation("owner", req.delegate, req.resource, req.ttl)
+    
+    # NEW: Log to Kafka
+    await audit_logger.log_event(
+        event_type="delegation",
+        actor="owner",
+        action="grant",
+        resource=req.resource,
+        details={"delegate": req.delegate, "ttl": req.ttl}
+    )
+    
     return {
         "status": "delegation_created", 
         "delegate": req.delegate, 
@@ -30,14 +43,14 @@ def create_delegation(req: DelegationRequest):
 
 # --- Week 3: Coupon Issuance with Policy Check ---
 @router.post("/issue", response_model=CouponResponse)
-def issue_coupon(
+async def issue_coupon( # Changed to async
     req: CouponRequest, 
     request: Request,
     authorization: Optional[str] = Header(None)
 ):
     # 1. Authentication & Scope Extraction
     user_id = "anonymous"
-    user_scope = [] # Scope coming from OIDC token
+    user_scope = [] 
     
     if authorization:
         try:
@@ -45,14 +58,13 @@ def issue_coupon(
             if scheme.lower() == "bearer":
                 claims = verify_oidc_token(token)
                 user_id = claims.get("sub", "unknown")
-                # Extract scope from token (handle both string and list formats)
                 raw_scope = claims.get("scope", "")
                 if isinstance(raw_scope, str):
                     user_scope = raw_scope.split(" ")
                 elif isinstance(raw_scope, list):
                     user_scope = raw_scope
         except Exception:
-            pass # Continue as anonymous or fail depending on strictness
+            pass 
             
     # 2. mTLS Identity
     mtls_id = get_mtls_identity(request.headers)
@@ -65,22 +77,30 @@ def issue_coupon(
     # 4. Prepare Input for OPA
     policy_input = {
         "audience": req.audience,
-        "scope": req.scope,          # The scope REQUESTED
-        "resource": req.resource,    # The resource REQUESTED
+        "scope": req.scope,          
+        "resource": req.resource,    
         "token": {
             "sub": user_id,
             "aud": req.audience, 
-            "scope": user_scope      # The scope POSSESSED by the user
+            "scope": user_scope      
         },
         "delegations": {
-            # Pass delegation list for the requested resource
             req.resource if req.resource else "global": delegated_users 
         }
     }
     
     # 5. Policy Enforcement Point (PEP)
     allowed = policy_engine.check_permission(policy_input)
+    
     if not allowed:
+        # NEW: Log Failed Attempt
+        await audit_logger.log_event(
+            event_type="access_denied",
+            actor=user_id,
+            action="issue_coupon",
+            resource=req.resource or "unknown",
+            details={"reason": "Policy denied by OPA"}
+        )
         raise HTTPException(status_code=403, detail="Policy denied by OPA")
 
     # 6. Mint Coupon
@@ -94,8 +114,16 @@ def issue_coupon(
         cnf=cnf
     )
     
-    # Verify immediately to get JTI for response
     decoded = verify_coupon(token)
+    
+    
+    await audit_logger.log_event(
+        event_type="issue_coupon",
+        actor=user_id,
+        action="issue",
+        resource=decoded.get("jti"), # Log JTI as resource
+        details={"audience": req.audience, "scope": req.scope}
+    )
     
     return CouponResponse(
         coupon=token,
@@ -103,42 +131,44 @@ def issue_coupon(
         jti=decoded.get("jti")
     )
 
-# --- Standard Verification & Revocation ---
 @router.post("/verify", response_model=VerifyResponse)
-def verify_token(req: VerifyRequest):
+async def verify_token(req: VerifyRequest): # Changed to async
     try:
         claims = verify_coupon(req.coupon)
-        
-        # Check Redis for revocation
         jti = claims.get("jti")
         if jti and is_jti_revoked(jti):
             return VerifyResponse(valid=False, error="revoked")
-            
         return VerifyResponse(valid=True, claims=claims)
     except Exception as e:
         return VerifyResponse(valid=False, error=str(e))
 
 @router.post("/revoke", response_model=RevokeResponse)
-def revoke_token(req: RevokeRequest):
+async def revoke_token(req: RevokeRequest): # Changed to async
     revoke_jti(req.jti, ttl_seconds=3600, reason=req.reason)
+    
+    # NEW: Log Revocation
+    await audit_logger.log_event(
+        event_type="revocation",
+        actor="admin", # Assuming admin endpoint
+        action="revoke",
+        resource=req.jti,
+        details={"reason": req.reason}
+    )
+    
     return RevokeResponse(
         status="revoked",
         revoked_at=datetime.now(timezone.utc).isoformat()
     )
+
 @router.post("/filter-authorized")
-def filter_authorized_resources(
+async def filter_authorized_resources( # Changed to async
     req: PartialEvalRequest,
     request: Request,
     authorization: Optional[str] = Header(None)
 ):
-    """
-    Week 3: Partial Evaluation (Toplu Yetki Kontrolü)
-    Birden fazla kaynak için yetki sorulduğunda, sadece izin verilenleri döner.
-    """
-    # 1. Kimlik Bilgilerini Al
+
     user_id = "anonymous"
     user_scope = []
-    
     if authorization:
         try:
             scheme, token = authorization.split()
@@ -153,12 +183,9 @@ def filter_authorized_resources(
         except Exception:
             pass
 
-    # 2. Döngü ile Her Kaynağı Kontrol Et
     allowed_resources = []
     for res in req.resources:
-        # Bu kaynak için delegasyon var mı?
         delegated_users = get_delegations_for_resource(res)
-        
         policy_input = {
             "audience": req.audience,
             "scope": req.action,
@@ -172,8 +199,6 @@ def filter_authorized_resources(
                 res: delegated_users
             }
         }
-        
-        # OPA'ya sor
         if policy_engine.check_permission(policy_input):
             allowed_resources.append(res)
             
