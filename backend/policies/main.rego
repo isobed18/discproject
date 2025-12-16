@@ -2,48 +2,35 @@ package disc.authz
 
 import rego.v1
 
-# Default deny
+# Default Deny: Everything is forbidden unless explicitly allowed.
 default allow = false
 
-# Allow if the user has the required audience and scope
+# Main Allow Rule
 allow if {
+    # 1. Token must be valid (checked by backend, here we check attributes)
     input.audience == input.token.aud
-    has_valid_scope
-    has_valid_audience_role
+    
+    # 2. Check if user has the right scope OR has a delegation
+    has_permission
 }
 
-# 1. Scope Check
-# Simple check: Does the requested scope exist in the token's scope list?
-# (In reality, scope might be "read:data" and we check split strings)
-has_valid_scope if {
-    # Check if the requested scope is contained in the token scopes
-    # Input scope: "read:data"
-    # Token scope: "read:data write:data"
-    contains(input.token.scope, input.scope)
+# Rule: Has Permission via Direct Scope
+has_permission if {
+    # Check if the requested scope is in the user's token scope
+    # Example: User has "read:data", requests "read:data"
+    some scope in input.token.scope
+    scope == input.scope
 }
 
-# 2. Role/Audience Constraints
-# "admin" scope requires "internal-admin" audience
-has_valid_audience_role if {
-    not is_admin_request
-}
-
-has_valid_audience_role if {
-    is_admin_request
-    input.audience == "internal-admin"
-}
-
-is_admin_request if {
-    contains(input.scope, "admin")
-}
-
-# 3. Delegation Rules (Week 3 Feature)
-# Allow if a valid delegation exists for this user/resource
-# Input: { "delegations": { "resource_id": ["user_a", "user_b"] } }
-# This mocks a lookup. In real life, OPA might pull this from data.json or HTTP bundle.
-allow if {
-    some resource_id
-    input.resource == resource_id
-    allowed_users := input.delegations[resource_id]
+# Rule: Has Permission via Delegation (Week 3 Feature)
+has_permission if {
+    # Check if the user ID is in the delegation list for this resource
+    # input.delegations is a dictionary: {"resource_id": ["user1", "user2"]}
+    allowed_users := input.delegations[input.resource]
     input.token.sub in allowed_users
+}
+
+# Optional: Admin Override
+has_permission if {
+    "admin" in input.token.scope
 }

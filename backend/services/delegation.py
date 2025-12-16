@@ -2,7 +2,7 @@ import redis
 from typing import List
 from ..core.config import settings
 
-# Initialize Redis connection (duplicated pattern for MVP)
+# Initialize Redis connection
 try:
     redis_client = redis.Redis(
         host=settings.REDIS_HOST,
@@ -23,32 +23,25 @@ except redis.exceptions.ConnectionError:
         def smembers(self, key):
             return self.store.get(key, set())
         def expire(self, key, ttl):
-            pass # Mock doesn't handle TTL expiration actively
+            pass 
     redis_client = MockRedisDelegation()
 
 def add_delegation(owner: str, delegate: str, resource: str, ttl: int = 3600):
     """
-    Allow 'delegate' to act on 'resource' owned by 'owner'.
-    In our model, we just store that 'delegate' has access to 'resource'.
-    Key: "delegations:{resource}" -> Set(delegate_user_ids)
-    
-    Realistically we might want "delegations:{owner}:{resource}" but for week 3
-    we follow the simplistic OPA rule checking `input.resource`.
+    Grants 'delegate' access to 'resource'.
+    Data Structure: "delegations:{resource}" -> Set(delegate_user_ids)
     """
     key = f"delegations:{resource}"
     redis_client.sadd(key, delegate)
-    # Note: Sets don't expire individually in Redis easily without logic, 
-    # but we can expire the whole key if it's unique to the delegation.
-    # For MVP with shared resource key, we won't set expiry on the set, 
-    # or we accept that the resource delegation list expires entirely.
-    # Let's just set expire for the whole resource list for now.
+    
+    # In this simplified model, we expire the whole resource delegation list.
+    # In a production granular model, we would use sorted sets or individual keys.
     redis_client.expire(key, ttl)
 
 def get_delegations_for_resource(resource: str) -> List[str]:
     """
-    Return list of users allowed to access this resource via delegation.
+    Returns a list of users who have been delegated access to this resource.
     """
     key = f"delegations:{resource}"
-    # smembers returns a set
     members = redis_client.smembers(key)
     return list(members)

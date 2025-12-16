@@ -1,24 +1,13 @@
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, List, Dict, Any
 
+# --- Coupon Models ---
 class CouponRequest(BaseModel):
     audience: str
     scope: str
-    resource: Optional[str] = None # The resource being accessed (for delegation checks)
+    resource: Optional[str] = None # Resource being accessed (crucial for delegation checks)
     ttl_seconds: Optional[int] = 300
-    # In a real mTLS scenario, we might not need to pass cnf explicitly if we extract it from the cert
-    # But for MVP/testing, we might allow passing it or infer it.
 
-class DelegationRequest(BaseModel):
-    delegate: str
-    resource: str
-    ttl: int = 3600
-
-class PartialEvalRequest(BaseModel):
-    resources: list[str]
-    action: str = "read"
-    audience: str = "default"
-    
 class CouponResponse(BaseModel):
     coupon: str
     expires_in: int
@@ -39,3 +28,18 @@ class RevokeRequest(BaseModel):
 class RevokeResponse(BaseModel):
     status: str
     revoked_at: str
+
+# --- Week 3: Delegation & Policy Models ---
+
+class DelegationRequest(BaseModel):
+    delegate: str   # The user receiving permission (e.g., "user:123")
+    resource: str   # The target resource (e.g., "doc:secure-1")
+    ttl: int = 3600 # Duration of delegation in seconds
+
+class PartialEvalRequest(BaseModel):
+    """
+    Used for batch filtering authorized resources.
+    """
+    resources: List[str]
+    action: str = "read"
+    audience: str = "default"

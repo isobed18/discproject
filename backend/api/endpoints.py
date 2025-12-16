@@ -1,120 +1,89 @@
 from fastapi import APIRouter, HTTPException, Depends, Header, Request
 from typing import Optional
 from datetime import datetime, timezone
-from .models import CouponRequest, CouponResponse, VerifyRequest, VerifyResponse, RevokeRequest, RevokeResponse, DelegationRequest, PartialEvalRequest
+
+from .models import (
+    CouponRequest, CouponResponse, VerifyRequest, VerifyResponse, 
+    RevokeRequest, RevokeResponse, DelegationRequest, PartialEvalRequest
+)
 from ..core.security import create_coupon, verify_coupon, verify_oidc_token, get_mtls_identity
 from ..services.revocation import revoke_jti, is_jti_revoked
 from ..services.delegation import add_delegation, get_delegations_for_resource
+from ..core.policy import policy_engine
 
 router = APIRouter()
 
+# --- Week 3: Delegation Endpoint ---
 @router.post("/delegations")
 def create_delegation(req: DelegationRequest):
-    # In a real app, we would verify that the caller OWNS the resource.
-    # For MVP, we allow anyone to create a delegation.
+    """
+    Creates a new delegation entry in Redis.
+    Allows 'req.delegate' to access 'req.resource'.
+    """
+    # In a real system, we would verify that the caller OWNS the resource first.
     add_delegation("owner", req.delegate, req.resource, req.ttl)
-    return {"status": "delegation_created", "delegate": req.delegate, "resource": req.resource}
+    return {
+        "status": "delegation_created", 
+        "delegate": req.delegate, 
+        "resource": req.resource
+    }
 
-@router.post("/filter-authorized")
-def filter_authorized_resources(
-    req: PartialEvalRequest,
-    request: Request,
-    authorization: Optional[str] = Header(None)
-):
-    """
-    Demonstrates Partial Evaluation (or Batch Check).
-    Takes a list of resources and returns only those that are allowed.
-    """
-    from ..core.policy import policy_engine
-    
-    # 1. Identify the user (Extract from Token or default to anonymous)
-    user_id = "anonymous"
-    if authorization:
-        try:
-            scheme, token = authorization.split()
-            if scheme.lower() == "bearer":
-                claims = verify_oidc_token(token)
-                user_id = claims.get("sub", "unknown")
-        except Exception:
-            pass 
-
-    allowed_resources = []
-    
-    # In a real OPA Partial Eval, we would send the policy + unknown input 
-    # and get back the conditions. 
-    # For MVP, we iterate (Batch Check) which is a common specific case of Partial Eval usage.
-    
-    for res in req.resources:
-        # Mocking the input context. In reality this depends on WHO is asking.
-        # We assume "anonymous" or "test-user" for this open endpoint unless auth header is parsed.
-        # For simplicity, we just check against the hardcoded policy logic or OPA.
-        
-        # We'll use the check_permission method.
-        # Note: "token" part mocks the requester having a token for this resource
-        # purely to see if the POLICY (delegation/admin) would allow it.
-        
-        input_data = {
-            "resource": res,
-            "audience": req.audience,
-            "scope": req.action,
-            "token": {"sub": user_id, "aud": req.audience, "scope": "default"}, # Use real user_id
-            "delegations": {res: get_delegations_for_resource(res)}
-        }
-        
-        if policy_engine.check_permission(input_data):
-            allowed_resources.append(res)
-            
-    return {"authorized": allowed_resources}
-
+# --- Week 3: Coupon Issuance with Policy Check ---
 @router.post("/issue", response_model=CouponResponse)
 def issue_coupon(
     req: CouponRequest, 
     request: Request,
     authorization: Optional[str] = Header(None)
 ):
-    # 1. OIDC Authentication
+    # 1. Authentication & Scope Extraction
     user_id = "anonymous"
+    user_scope = [] # Scope coming from OIDC token
+    
     if authorization:
         try:
             scheme, token = authorization.split()
             if scheme.lower() == "bearer":
                 claims = verify_oidc_token(token)
                 user_id = claims.get("sub", "unknown")
+                # Extract scope from token (handle both string and list formats)
+                raw_scope = claims.get("scope", "")
+                if isinstance(raw_scope, str):
+                    user_scope = raw_scope.split(" ")
+                elif isinstance(raw_scope, list):
+                    user_scope = raw_scope
         except Exception:
-            pass # Fail open for MVP if no token, or enforce? 
+            pass # Continue as anonymous or fail depending on strictness
             
     # 2. mTLS Identity
     mtls_id = get_mtls_identity(request.headers)
     
-    # Policy Check (OPA)
-    from ..core.policy import policy_engine
-    
-    # Fetch real delegations if a resource is specified
+    # 3. Retrieve Active Delegations
     delegated_users = []
     if req.resource:
         delegated_users = get_delegations_for_resource(req.resource)
     
-    # Construct the input for OPA
+    # 4. Prepare Input for OPA
     policy_input = {
         "audience": req.audience,
-        "scope": req.scope,
+        "scope": req.scope,          # The scope REQUESTED
+        "resource": req.resource,    # The resource REQUESTED
         "token": {
             "sub": user_id,
             "aud": req.audience, 
-            "scope": "default" # Fix: Do not grant requested scope by default. Only allow if policy grants it (e.g. delegation).
+            "scope": user_scope      # The scope POSSESSED by the user
         },
         "delegations": {
-            # Pass the delegations for the requested resource
+            # Pass delegation list for the requested resource
             req.resource if req.resource else "global": delegated_users 
-        },
-        "resource": req.resource
+        }
     }
     
+    # 5. Policy Enforcement Point (PEP)
     allowed = policy_engine.check_permission(policy_input)
     if not allowed:
         raise HTTPException(status_code=403, detail="Policy denied by OPA")
 
-    # Create the coupon
+    # 6. Mint Coupon
     cnf = {"x5t#S256": mtls_id.split(":")[1]} if mtls_id else None
     
     token = create_coupon(
@@ -125,32 +94,22 @@ def issue_coupon(
         cnf=cnf
     )
     
-    # We need to extract JTI to return it, or we can decode the token we just made
+    # Verify immediately to get JTI for response
     decoded = verify_coupon(token)
-    jti = decoded.get("jti")
-
-    # Log event
-    audit_logs.append({
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "event_type": "coupon_issued",
-        "actor": "test-user",
-        "action": "issue",
-        "resource": jti,
-        "details": {"audience": req.audience, "scope": req.scope}
-    })
     
     return CouponResponse(
         coupon=token,
         expires_in=req.ttl_seconds or 300,
-        jti=jti
+        jti=decoded.get("jti")
     )
 
+# --- Standard Verification & Revocation ---
 @router.post("/verify", response_model=VerifyResponse)
 def verify_token(req: VerifyRequest):
     try:
         claims = verify_coupon(req.coupon)
         
-        # Check revocation
+        # Check Redis for revocation
         jti = claims.get("jti")
         if jti and is_jti_revoked(jti):
             return VerifyResponse(valid=False, error="revoked")
@@ -161,23 +120,61 @@ def verify_token(req: VerifyRequest):
 
 @router.post("/revoke", response_model=RevokeResponse)
 def revoke_token(req: RevokeRequest):
-    # ... (existing code)
     revoke_jti(req.jti, ttl_seconds=3600, reason=req.reason)
-    
     return RevokeResponse(
         status="revoked",
         revoked_at=datetime.now(timezone.utc).isoformat()
     )
+@router.post("/filter-authorized")
+def filter_authorized_resources(
+    req: PartialEvalRequest,
+    request: Request,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Week 3: Partial Evaluation (Toplu Yetki Kontrolü)
+    Birden fazla kaynak için yetki sorulduğunda, sadece izin verilenleri döner.
+    """
+    # 1. Kimlik Bilgilerini Al
+    user_id = "anonymous"
+    user_scope = []
+    
+    if authorization:
+        try:
+            scheme, token = authorization.split()
+            if scheme.lower() == "bearer":
+                claims = verify_oidc_token(token)
+                user_id = claims.get("sub", "unknown")
+                raw_scope = claims.get("scope", "")
+                if isinstance(raw_scope, str):
+                    user_scope = raw_scope.split(" ")
+                elif isinstance(raw_scope, list):
+                    user_scope = raw_scope
+        except Exception:
+            pass
 
-# Mock in-memory audit log for MVP
-audit_logs = []
-
-@router.get("/audit-logs")
-def get_audit_logs():
-    return audit_logs
-
-@router.post("/log-event")
-def log_event(event: dict):
-    # Internal endpoint to log events (in real app, this happens automatically)
-    audit_logs.append(event)
-    return {"status": "logged"}
+    # 2. Döngü ile Her Kaynağı Kontrol Et
+    allowed_resources = []
+    for res in req.resources:
+        # Bu kaynak için delegasyon var mı?
+        delegated_users = get_delegations_for_resource(res)
+        
+        policy_input = {
+            "audience": req.audience,
+            "scope": req.action,
+            "resource": res,
+            "token": {
+                "sub": user_id,
+                "aud": req.audience, 
+                "scope": user_scope
+            },
+            "delegations": {
+                res: delegated_users
+            }
+        }
+        
+        # OPA'ya sor
+        if policy_engine.check_permission(policy_input):
+            allowed_resources.append(res)
+            
+    return allowed_resources

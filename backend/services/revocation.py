@@ -22,14 +22,16 @@ except redis.exceptions.ConnectionError:
 
 def revoke_jti(jti: str, ttl_seconds: int, reason: str = "revoked"):
     """
-    Add a JTI to the revocation list with a TTL.
+    Adds a JTI (JSON Token Identifier) to the revocation list (Redis) with a TTL.
+    This effectively blacklists the token until it naturally expires.
     """
     key = f"revoked:{jti}"
     redis_client.setex(key, ttl_seconds, reason)
 
 def is_jti_revoked(jti: str) -> bool:
     """
-    Check if a JTI is in the revocation list.
+    Checks if a JTI exists in the revocation list.
+    Returns: True if revoked, False otherwise.
     """
     key = f"revoked:{jti}"
     return redis_client.exists(key) > 0

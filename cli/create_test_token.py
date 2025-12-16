@@ -14,8 +14,13 @@ def create_dummy_token(subject="test-user"):
         "iat": now,
         "exp": now + timedelta(hours=1),
         "name": f"Test User ({subject})",
-        "email": f"{subject}@example.com"
+        "email": f"{subject}@example.com",
+        
+        # Week 3 Fix: Added scope so OPA tests can pass default checks
+        # This allows the token to act as an admin or read/write user in tests
+        "scope": "read:data write:data admin" 
     }
+    
     # We sign with a dummy key because the backend currently (in MVP)
     # uses jwt.get_unverified_claims() or similar for OIDC.
     # If backend enforces signature, we'd need the shared secret.

@@ -2,7 +2,7 @@ import requests
 import json
 import sys
 
-BASE_URL = "http://localhost:8004/v1"
+BASE_URL = "http://localhost:8000/v1"
 
 def test_flow():
     print("--- 1. Testing Delegation ---")
