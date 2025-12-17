@@ -1,48 +1,66 @@
 version: '3.8'
 
 services:
+  # --- BACKEND ---
   backend:
-    build:
-      context: ../backend
-      dockerfile: Dockerfile
+    build: ../backend
+    container_name: disc_backend
     ports:
       - "8000:8000"
+    volumes:
+      - ../backend:/app
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - OPA_URL=http://opa:8181
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - KAFKA_TOPIC_AUDIT=audit-logs
+    # Command uses main:app (no relative dots here)
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
       - redis
-      - postgres
-    volumes:
-      - ../backend:/app
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+      - opa
+      - kafka
+    networks:
+      - disc-network
 
-  postgres:
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_USER: disc
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: disc_ca
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
+  # --- INFRASTRUCTURE ---
   redis:
     image: redis:7-alpine
+    container_name: disc_redis
     ports:
       - "6379:6379"
+    networks:
+      - disc-network
+
+  opa:
+    image: openpolicyagent/opa:latest
+    container_name: disc_opa
+    ports:
+      - "8181:8181"
+    command:
+      - "run"
+      - "--server"
+      - "--addr=0.0.0.0:8181"
+      - "--diagnostic-addr=0.0.0.0:8282"
+      - "/policies"
     volumes:
-      - redis_data:/data
+      - ./../policies:/policies
+    networks:
+      - disc-network
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.4.0
+    container_name: disc_zookeeper
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - disc-network
 
   kafka:
     image: confluentinc/cp-kafka:7.4.0
+    container_name: disc_kafka
     depends_on:
       - zookeeper
     ports:
@@ -54,36 +72,9 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - disc-network
 
-  vault:
-    image: hashicorp/vault:1.15
-    ports:
-      - "8200:8200"
-    environment:
-      VAULT_DEV_ROOT_TOKEN_ID: root
-      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
-    cap_add:
-      - IPC_LOCK
-
-  prometheus:
-    image: prom/prometheus:v2.47.0
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
-
-  grafana:
-    image: grafana/grafana:10.1.0
-    ports:
-      - "3000:3000"
-    depends_on:
-      - prometheus
-
-  loki:
-    image: grafana/loki:2.9.0
-    ports:
-      - "3100:3100"
-
-volumes:
-  postgres_data:
-  redis_data:
+networks:
+  disc-network:
+    driver: bridge

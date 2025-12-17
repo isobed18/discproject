@@ -1,17 +1,24 @@
 import redis
+import logging
 from typing import List
-from ..core.config import settings
 
-# Initialize Redis connection (duplicated pattern for MVP)
+# --- DÜZELTME: Absolute Import ---
+from core.config import settings
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Initialize Redis Connection
 try:
     redis_client = redis.Redis(
         host=settings.REDIS_HOST,
         port=settings.REDIS_PORT,
         decode_responses=True
     )
-    redis_client.ping() # Check connection
-except redis.exceptions.ConnectionError:
-    print("WARNING: Redis not available for DelegationService, using in-memory mock.")
+    redis_client.ping()
+    logger.info(f"✅ Delegation Service connected to Redis at {settings.REDIS_HOST}")
+except Exception as e:
+    logger.warning(f"⚠️ Redis not available ({e}), using in-memory mock.")
     class MockRedisDelegation:
         def __init__(self):
             self.store = {}
@@ -23,32 +30,24 @@ except redis.exceptions.ConnectionError:
         def smembers(self, key):
             return self.store.get(key, set())
         def expire(self, key, ttl):
-            pass # Mock doesn't handle TTL expiration actively
+            pass 
     redis_client = MockRedisDelegation()
 
 def add_delegation(owner: str, delegate: str, resource: str, ttl: int = 3600):
-    """
-    Allow 'delegate' to act on 'resource' owned by 'owner'.
-    In our model, we just store that 'delegate' has access to 'resource'.
-    Key: "delegations:{resource}" -> Set(delegate_user_ids)
-    
-    Realistically we might want "delegations:{owner}:{resource}" but for week 3
-    we follow the simplistic OPA rule checking `input.resource`.
-    """
     key = f"delegations:{resource}"
     redis_client.sadd(key, delegate)
-    # Note: Sets don't expire individually in Redis easily without logic, 
-    # but we can expire the whole key if it's unique to the delegation.
-    # For MVP with shared resource key, we won't set expiry on the set, 
-    # or we accept that the resource delegation list expires entirely.
-    # Let's just set expire for the whole resource list for now.
     redis_client.expire(key, ttl)
+    logger.info(f"➕ Delegation ADDED: {delegate} -> {resource}")
 
 def get_delegations_for_resource(resource: str) -> List[str]:
-    """
-    Return list of users allowed to access this resource via delegation.
-    """
     key = f"delegations:{resource}"
-    # smembers returns a set
     members = redis_client.smembers(key)
-    return list(members)
+    
+    decoded_members = []
+    if members:
+        for m in members:
+            val = m.decode('utf-8') if isinstance(m, bytes) else str(m)
+            decoded_members.append(val)
+            
+    logger.info(f"🔍 Delegation LOOKUP for {resource}: Found {decoded_members}")
+    return decoded_members
