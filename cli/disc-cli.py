@@ -23,6 +23,10 @@ def main():
     verify_parser = subparsers.add_parser("verify", help="Verify a coupon")
     verify_parser.add_argument("token", help="The coupon token")
 
+    # Validate (alias for verify)
+    validate_parser = subparsers.add_parser("validate", help="Validate a coupon (alias for verify)")
+    validate_parser.add_argument("token", help="The coupon token")
+
     # Revoke
     revoke_parser = subparsers.add_parser("revoke", help="Revoke a coupon")
     revoke_parser.add_argument("jti", help="The JTI of the coupon")
@@ -36,7 +40,7 @@ def main():
         if args.command == "mint":
             result = client.issue_coupon(args.audience, args.scope, args.ttl)
             print(json.dumps(result, indent=2))
-        elif args.command == "verify":
+        elif args.command in ("verify", "validate"):
             result = client.verify_coupon(args.token)
             print(json.dumps(result, indent=2))
         elif args.command == "revoke":
@@ -44,8 +48,12 @@ def main():
             print(json.dumps(result, indent=2))
         else:
             parser.print_help()
+            raise SystemExit(1)
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error: {e}", file=sys.stderr)
+        raise SystemExit(1)
+
+    raise SystemExit(0)
 
 if __name__ == "__main__":
     main()
