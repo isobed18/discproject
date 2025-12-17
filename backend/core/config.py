@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     REDIS_PORT: int = 6379
 
     # Policy Engine uses OPA
-    OPA_URL: str = "http://localhost:8181/v1/data/disc/authz"
+    OPA_URL: str = "http://host.docker.internal:8182"
     DEV_MODE: bool = False # For local dev without OPA, we fail-open
 
     

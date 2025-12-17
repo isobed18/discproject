@@ -286,3 +286,61 @@ The CLI is the easiest way to interact with the system.
     *   **Delegation Rules**: Supports delegation of authority (e.g., User A can act on behalf of User B for specific resources) via Rego policies.
     *   **Dev Mode**: Fail-open fallback for local development without OPA.
 
+## 📊 Observability & Operational Maturity (Week 4)
+
+This project aims not only for functional correctness but also for production-like operational behavior.  
+During Week 4, the system was elevated to an **operational maturity** level.
+
+---
+
+### 🔍 Metrics (Prometheus)
+
+The backend exposes Prometheus-compatible metrics via the following endpoint:
+
+* **GET /metrics**
+
+Key collected metrics include:
+
+* **disc_coupon_issue_total** — total number of issued coupons
+* **disc_issue_latency_seconds** — coupon issuance latency
+* **disc_revoke_total** — total number of revoked coupons
+* **disc_policy_deny_total** — requests denied by OPA policies
+
+---
+
+### 📈 Grafana Dashboard Examples
+
+* **Coupon Issue Rate**
+
+```
+rate(disc_coupon_issue_total[1m])
+```
+
+* **p95 Latency**
+
+```
+histogram_quantile(
+  0.95,
+  sum(rate(disc_issue_latency_seconds_bucket[5m])) by (le)
+)
+```
+
+* **Revocation Freshness**
+
+```
+time() - disc_last_revoke_timestamp
+```
+
+These dashboards enable observation of system behavior under load, authorization latency, and the consistency of the revocation mechanism.
+
+---
+
+### 🛡️ Fail-Closed Security Behavior
+
+Since the system relies on an external **Open Policy Agent (OPA)** for authorization decisions, it exhibits the following security behavior:
+
+* If OPA is unreachable → **/v1/issue → 503 Service Unavailable**
+* If OPA is reachable but denies the request → **403 Forbidden**
+* When **DEV_MODE = False**, the default behavior is **fail-closed**
+
+This approach prevents accidental privilege escalation and enforces **secure-by-default** principles.
