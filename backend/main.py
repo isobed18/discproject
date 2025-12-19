@@ -10,7 +10,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 # --- ENTRY POINT: ABSOLUTE IMPORTS ONLY ---
 # Do not use relative imports (dots) in this file.
 from core.config import settings
-from api import endpoints
+from api import endpoints, audit
 from services.audit import audit_service
 from services.kafka_audit_consumer import kafka_audit_consumer
 from core.metrics import HTTP_REQUESTS_TOTAL, HTTP_REQUEST_LATENCY_SECONDS
@@ -87,6 +87,7 @@ app.add_middleware(
 )
 
 app.include_router(endpoints.router, prefix=settings.API_V1_STR)
+app.include_router(audit.router, prefix=settings.API_V1_STR)
 
 
 @app.get("/health")
