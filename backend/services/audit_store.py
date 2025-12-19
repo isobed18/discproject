@@ -90,7 +90,14 @@ class AuditEventStore:
 
         async with self._lock:
             if event_id in self._seen_ids:
+                # If the Kafka copy arrives later, upgrade the existing local record
+                if source == "kafka":
+                    for existing in self._events:
+                        if existing.get("event_id") == event_id:
+                            existing.update(record)   # changes source to kafka + adds raw/signature fields
+                            return existing
                 return record
+
             # If the deque is full, evicted items won't be in _events anymore.
             # Clean up _seen_ids lazily when it grows too large.
             self._events.append(record)
