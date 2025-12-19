@@ -89,9 +89,6 @@ export default function App() {
       <main className="main">
         <header className="topbar">
           <div className="topTitle">{navItems.find((n) => n.key === page)?.label}</div>
-          <div className="topRight">
-            <span className="pill">Week 4</span>
-          </div>
         </header>
 
         <div className="content">
