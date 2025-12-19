@@ -13,6 +13,7 @@ Out of scope: gRPC interceptors.
 from __future__ import annotations
 
 import os
+import uuid
 from contextlib import asynccontextmanager
 from typing import Dict, Iterable, Optional, Set
 from urllib.parse import urljoin
@@ -108,6 +109,7 @@ async def lifespan(app: FastAPI):
     # Config
     app.state.ca_base_url = os.getenv("CA_BASE_URL", "http://localhost:8000/v1").rstrip("/")
     app.state.upstream_base_url = os.getenv("UPSTREAM_BASE_URL", "http://localhost:8001").rstrip("/")
+    app.state.gateway_id = os.getenv("GATEWAY_ID", "disc-gateway")
     app.state.unprotected_paths = _env_list(
         "UNPROTECTED_PATHS",
         "/health,/ready,/live,/docs,/openapi.json",
@@ -131,9 +133,15 @@ async def health():
 
 @app.middleware("http")
 async def coupon_validation_middleware(request: Request, call_next):
+    # Correlation ID propagation (traceability end-to-end)
+    corr_id = request.headers.get("x-correlation-id") or request.headers.get("x-request-id") or str(uuid.uuid4())
+    request.state.correlation_id = corr_id
+
     # Intercept all inbound requests.
     if request.url.path in request.app.state.unprotected_paths:
-        return await call_next(request)
+        resp = await call_next(request)
+        resp.headers["x-correlation-id"] = corr_id
+        return resp
 
     coupon = _extract_coupon(request)
     if not coupon:
@@ -142,7 +150,15 @@ async def coupon_validation_middleware(request: Request, call_next):
     verify_url = urljoin(f"{request.app.state.ca_base_url}/", "verify")
 
     try:
-        verify_resp = await request.app.state.http.post(verify_url, json={"coupon": coupon})
+        verify_resp = await request.app.state.http.post(
+            verify_url,
+            json={"coupon": coupon},
+            headers={
+                "x-correlation-id": corr_id,
+                "x-gateway-id": request.app.state.gateway_id,
+                "x-actor": "gateway",
+            },
+        )
     except Exception:
         return JSONResponse(status_code=503, content={"detail": "coupon_authority_unavailable"})
 
@@ -178,7 +194,9 @@ async def coupon_validation_middleware(request: Request, call_next):
     request.state.coupon = coupon
     request.state.coupon_claims = claims
 
-    return await call_next(request)
+    resp = await call_next(request)
+    resp.headers["x-correlation-id"] = corr_id
+    return resp
 
 
 @app.api_route("/{full_path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
@@ -194,6 +212,11 @@ async def proxy_to_upstream(full_path: str, request: Request):
 
     # Forward most headers. (Keep Authorization to satisfy outbound propagation.)
     headers = {k: v for k, v in request.headers.items() if k.lower() not in {"host", "content-length"}}
+    # Ensure correlation id and gateway id are always forwarded.
+    corr_id = getattr(request.state, "correlation_id", None) or request.headers.get("x-correlation-id")
+    if corr_id:
+        headers["x-correlation-id"] = corr_id
+    headers["x-gateway-id"] = request.app.state.gateway_id
 
     body = await request.body()
 
