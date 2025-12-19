@@ -10,6 +10,23 @@ from cryptography.hazmat.primitives import serialization
 
 # --- DÜZELTME: Absolute Import (Nokta yok!) ---
 from core.config import settings
+from cryptography.fernet import Fernet
+
+# --- Encryption Utils (Week 4) ---
+_fernet = Fernet(settings.FIELD_ENCRYPTION_KEY)
+
+def encrypt_field(value: str) -> str:
+    """Encrypts a string value using Fernet (AES)."""
+    if not value:
+        return value
+    return _fernet.encrypt(value.encode()).decode()
+
+def decrypt_field(token: str) -> str:
+    """Decrypts a previously encrypted string."""
+    if not token:
+        return token
+    return _fernet.decrypt(token.encode()).decode()
+
 
 # --- Key Generation (Memory-based for MVP) ---
 # Bu anahtarlar her restartta değişir (MVP için normal)

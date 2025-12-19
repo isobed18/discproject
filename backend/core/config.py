@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
     KAFKA_TOPIC_AUDIT: str = "audit-logs"
 
+    # Encryption (Week 4)
+    # 32 url-safe base64-encoded bytes. Default is for dev only.
+    FIELD_ENCRYPTION_KEY: str = "Jd87wj9L_f83mK-74sS2-d9f0_k3nC83_w84mF93kD0=" 
+
+
     class Config:
         env_file = ".env"
 
