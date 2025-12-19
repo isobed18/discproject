@@ -1,111 +1,107 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 
-interface AuditLog {
-  timestamp: string;
-  event_type: string;
-  actor: string;
-  action: string;
-  resource: string;
-  details: any;
+import { DashboardPage } from './pages/DashboardPage'
+import { AuditLogPage } from './pages/AuditLogPage'
+import { KafkaConsumerPage } from './pages/KafkaConsumerPage'
+import { CorrelationDebugPage } from './pages/CorrelationDebugPage'
+import { RevokeOpsPage } from './pages/RevokeOpsPage'
+
+type Page = 'dashboard' | 'audit' | 'kafka' | 'debug' | 'revoke'
+
+function pageFromHash(): Page {
+  const h = window.location.hash || '#/dashboard'
+  if (h.startsWith('#/audit')) return 'audit'
+  if (h.startsWith('#/kafka')) return 'kafka'
+  if (h.startsWith('#/debug')) return 'debug'
+  if (h.startsWith('#/revoke')) return 'revoke'
+  return 'dashboard'
 }
 
-function App() {
-  const [logs, setLogs] = useState<AuditLog[]>([])
-  const [loading, setLoading] = useState(false)
-  const [revokeJti, setRevokeJti] = useState("")
-  const [revokeStatus, setRevokeStatus] = useState("")
-
-  const fetchLogs = async () => {
-    setLoading(true)
-    try {
-      const res = await fetch('http://localhost:8000/v1/audit-logs')
-      const data = await res.json()
-      // Sort by timestamp desc
-      data.sort((a: AuditLog, b: AuditLog) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-      setLogs(data)
-    } catch (err) {
-      console.error("Failed to fetch logs", err)
-    } finally {
-      setLoading(false)
-    }
+function navigate(page: Page, query?: Record<string, string>) {
+  const base = `#/${page}`
+  if (!query || Object.keys(query).length === 0) {
+    window.location.hash = base
+    return
   }
+  const usp = new URLSearchParams(query)
+  window.location.hash = `${base}?${usp.toString()}`
+}
+
+export default function App() {
+  const [page, setPage] = useState<Page>(pageFromHash())
 
   useEffect(() => {
-    fetchLogs()
-    const interval = setInterval(fetchLogs, 5000)
-    return () => clearInterval(interval)
+    const onHash = () => setPage(pageFromHash())
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
   }, [])
 
-  const handleRevoke = async () => {
-    if (!revokeJti) return;
-    try {
-      const res = await fetch('http://localhost:8000/v1/revoke', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jti: revokeJti, reason: "admin_ui_action" })
-      })
-      const data = await res.json()
-      setRevokeStatus(`Revoked: ${data.status} at ${data.revoked_at}`)
-      setRevokeJti("")
-      fetchLogs() // Refresh logs if we logged the revocation (we didn't yet in backend, but good practice)
-    } catch (err) {
-      setRevokeStatus("Failed to revoke")
-      console.error(err)
-    }
+  useEffect(() => {
+    if (!window.location.hash) navigate('dashboard')
+  }, [])
+
+  const navItems = useMemo(
+    () =>
+      [
+        { key: 'dashboard', label: 'Dashboard', icon: '⎈' },
+        { key: 'audit', label: 'Audit log', icon: '🧾' },
+        { key: 'kafka', label: 'Kafka consumer', icon: '🧵' },
+        { key: 'debug', label: 'Correlation debug', icon: '🕵️' },
+        { key: 'revoke', label: 'Revoke ops', icon: '⛔' },
+      ] as Array<{ key: Page; label: string; icon: string }>,
+    [],
+  )
+
+  const openCorrelation = (cid: string) => {
+    navigate('debug', { cid })
   }
 
   return (
-    <div className="container">
-      <h1>DISC Admin Console</h1>
-
-      <div className="card">
-        <h2>Revoke Coupon</h2>
-        <div className="form-group">
-          <input
-            type="text"
-            placeholder="Enter JTI to revoke"
-            value={revokeJti}
-            onChange={(e) => setRevokeJti(e.target.value)}
-          />
-          <button onClick={handleRevoke}>Revoke</button>
+    <div className="appShell">
+      <aside className="sidebar">
+        <div className="brand">
+          <div className="brandMark">DISC</div>
+          <div className="brandText">
+            <div className="brandTitle">Admin Console</div>
+            <div className="brandSub">Auditing & Traceability</div>
+          </div>
         </div>
-        {revokeStatus && <p>{revokeStatus}</p>}
-      </div>
 
-      <div className="card">
-        <div className="header-row">
-          <h2>Audit Logs</h2>
-          <button onClick={fetchLogs} disabled={loading}>Refresh</button>
+        <nav className="nav">
+          {navItems.map((i) => (
+            <button
+              key={i.key}
+              className={page === i.key ? 'navItem active' : 'navItem'}
+              onClick={() => navigate(i.key)}
+            >
+              <span className="navIcon">{i.icon}</span>
+              <span>{i.label}</span>
+            </button>
+          ))}
+        </nav>
+
+        <div className="sidebarFooter">
+          <div className="muted small">RBAC UI hookup postponed to next sprint.</div>
         </div>
-        <table>
-          <thead>
-            <tr>
-              <th>Timestamp</th>
-              <th>Event</th>
-              <th>Actor</th>
-              <th>Action</th>
-              <th>Resource (JTI)</th>
-              <th>Details</th>
-            </tr>
-          </thead>
-          <tbody>
-            {logs.map((log, i) => (
-              <tr key={i}>
-                <td>{new Date(log.timestamp).toLocaleString()}</td>
-                <td>{log.event_type}</td>
-                <td>{log.actor}</td>
-                <td>{log.action}</td>
-                <td>{log.resource}</td>
-                <td><pre>{JSON.stringify(log.details, null, 2)}</pre></td>
-              </tr>
-            ))}
-            {logs.length === 0 && <tr><td colSpan={6}>No logs found</td></tr>}
-          </tbody>
-        </table>
-      </div>
+      </aside>
+
+      <main className="main">
+        <header className="topbar">
+          <div className="topTitle">{navItems.find((n) => n.key === page)?.label}</div>
+          <div className="topRight">
+            <span className="pill">Week 4</span>
+          </div>
+        </header>
+
+        <div className="content">
+          {page === 'dashboard' && <DashboardPage onOpenCorrelation={openCorrelation} />}
+          {page === 'audit' && <AuditLogPage onOpenCorrelation={openCorrelation} />}
+          {page === 'kafka' && <KafkaConsumerPage onOpenCorrelation={openCorrelation} />}
+          {page === 'debug' && <CorrelationDebugPage />}
+          {page === 'revoke' && <RevokeOpsPage onOpenCorrelation={openCorrelation} />}
+        </div>
+      </main>
     </div>
   )
 }
-
-export default App
