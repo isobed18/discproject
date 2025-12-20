@@ -7,6 +7,11 @@ redis
 python-jose[cryptography]
 pyseto
 cryptography
+pyseto
+cryptography
 requests
 prometheus-client
 httpx
+slowapi
+bandit
+safety

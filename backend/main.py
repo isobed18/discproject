@@ -14,6 +14,12 @@ from api import endpoints, audit
 from services.audit import audit_service
 from services.kafka_audit_consumer import kafka_audit_consumer
 from core.metrics import HTTP_REQUESTS_TOTAL, HTTP_REQUEST_LATENCY_SECONDS
+from core.middleware_security import SecurityHeadersMiddleware
+
+# Week 5: Rate Limiting
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from core.limiter import limiter
 
 
 def _derive_route_label(path: str) -> str:
@@ -50,6 +56,13 @@ app = FastAPI(
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     lifespan=lifespan,
 )
+
+# Week 5: Register Limiter
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Week 5: Security Headers
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 @app.middleware("http")

@@ -33,7 +33,14 @@ from core.metrics import (
     OPA_DENY_TOTAL,
     OPA_UNAVAILABLE_TOTAL,
 )
+    OPA_DENY_TOTAL,
+    OPA_UNAVAILABLE_TOTAL,
+)
 from core.policy import policy_engine
+
+# Week 5: Rate Limiting
+from slowapi import _rate_limit_exceeded_handler
+from core.limiter import limiter
 
 router = APIRouter()
 
@@ -91,6 +98,7 @@ async def create_delegation(req: DelegationRequest):
 
 
 @router.post("/issue", response_model=CouponResponse)
+@limiter.limit("5/minute")
 async def issue_coupon(
     req: CouponRequest,
     request: Request,
