@@ -150,10 +150,6 @@ Now, if OPA is not running or the policy denies access, your requests will be re
 
 ---
 
-## 🧪 Testing New Features (Week 3)
-
-We have implemented **Delegation** and **Partial Evaluation**.
-
 ## 🧪 Testing New Features (Week 3 - Production Flow)
 
 We have implemented **Delegation** and **Partial Evaluation**.

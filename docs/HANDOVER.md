@@ -42,5 +42,10 @@ powershell -File scripts/security_scan.ps1
 ```
 
 ## ⚠️ Known TODOs (Future Work)
+> [!NOTE]
+> See [DEEP_AUDIT_REPORT.md](DEEP_AUDIT_REPORT.md) for the record of remediated items.
+
 - **Redis High Availability:** Currently single instance. Need Sentinel.
 - **OPA HA:** Currently single instance. Needs replicated deployment.
+
+
