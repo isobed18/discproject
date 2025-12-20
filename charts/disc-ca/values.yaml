@@ -1,0 +1,19 @@
+# Default values for disc-ca.
+
+replicaCount: 1
+
+image:
+  repository: disc-ca
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: "latest"
+
+service:
+  type: ClusterIP
+  port: 8000
+
+env:
+  PROJECT_NAME: "DISC"
+  DEV_MODE: "False"
+  REDIS_URL: "redis://redis-master:6379/0"
+  OPA_URL: "http://opa:8181/v1/data/disc/authz"
