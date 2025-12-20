@@ -1,11 +1,15 @@
 import httpx
-from typing import Optional, Dict, Any, Mapping
+import time
+import logging
+from typing import Optional, Dict, Any, Mapping, Callable
+
+logger = logging.getLogger("disc_sdk")
 
 class DiscClient:
     """Lightweight DISC SDK client.
 
     Week 3 requirement: support passing through tracing headers (e.g. `traceparent`).
-    This client accepts optional headers at construction time and/or per request.
+    Week 2 requirement (Remediation): Retry logic with backoff.
     """
 
     def __init__(
@@ -14,10 +18,39 @@ class DiscClient:
         *,
         tracing_headers: Optional[Mapping[str, str]] = None,
         timeout_seconds: float = 10.0,
+        max_retries: int = 3,
+        backoff_factor: float = 0.5,
     ):
         self.base_url = base_url
         self._tracing_headers: Dict[str, str] = dict(tracing_headers or {})
         self.client = httpx.Client(base_url=base_url, timeout=timeout_seconds)
+        self.max_retries = max_retries
+        self.backoff_factor = backoff_factor
+
+    def _request_with_retry(self, method: str, url: str, **kwargs) -> httpx.Response:
+        """Internal wrapper to handle retries for transient errors."""
+        last_exception = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                response = self.client.request(method, url, **kwargs)
+                # Retry on server errors (500, 502, 503, 504)
+                if response.status_code >= 500:
+                    raise httpx.HTTPStatusError(
+                        f"Server error {response.status_code}", request=response.request, response=response
+                    )
+                return response
+            except (httpx.ConnectError, httpx.ReadTimeout, httpx.HTTPStatusError) as e:
+                last_exception = e
+                if attempt < self.max_retries:
+                    sleep_time = self.backoff_factor * (2 ** attempt)
+                    logger.warning(f"Request failed ({e}), retrying in {sleep_time}s...")
+                    time.sleep(sleep_time)
+                else:
+                    logger.error("Max retries exceeded.")
+        
+        if last_exception:
+            raise last_exception
+        raise httpx.RequestError("Unknown retry error")
 
     def _merge_headers(self, headers: Optional[Mapping[str, str]] = None) -> Dict[str, str]:
         merged: Dict[str, str] = {}
@@ -35,14 +68,15 @@ class DiscClient:
         headers: Optional[Mapping[str, str]] = None,
     ) -> Dict[str, Any]:
         """
-        Issue a new coupon.
+        Issue a new coupon (with retries).
         """
-        response = self.client.post(
+        response = self._request_with_retry(
+            "POST",
             "/issue",
             json={
-            "audience": audience,
-            "scope": scope,
-            "ttl_seconds": ttl_seconds
+                "audience": audience,
+                "scope": scope,
+                "ttl_seconds": ttl_seconds
             },
             headers=self._merge_headers(headers),
         )
