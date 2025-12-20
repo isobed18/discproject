@@ -33,9 +33,6 @@ from core.metrics import (
     OPA_DENY_TOTAL,
     OPA_UNAVAILABLE_TOTAL,
 )
-    OPA_DENY_TOTAL,
-    OPA_UNAVAILABLE_TOTAL,
-)
 from core.policy import policy_engine
 
 # Week 5: Rate Limiting

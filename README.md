@@ -98,6 +98,16 @@ Here is a breakdown of the codebase for new contributors:
 
 ---
 
+## ✅ Project Status & Verification
+This project has completed deliverables for **Weeks 1-6** (Security Persona).
+- Full Status Checklist: [COMPLETION_CHECKLIST.md](COMPLETION_CHECKLIST.md)
+- Handover Report: [docs/HANDOVER.md](docs/HANDOVER.md)
+
+To verify the entire system functionality:
+```bash
+python scripts/verify_all.py
+```
+
 ---
 
 ## 🛡️ OPA Policy Engine Setup (Important)
@@ -344,3 +354,26 @@ Since the system relies on an external **Open Policy Agent (OPA)** for authoriza
 * When **DEV_MODE = False**, the default behavior is **fail-closed**
 
 This approach prevents accidental privilege escalation and enforces **secure-by-default** principles.
+
+---
+
+## 🛡️ Security & Compliance (Week 4-6)
+
+### 1. Audit Indexing & Search
+The system now persists audit logs to Redis and provides a search API.
+- **Search**: `GET /v1/audit/search?actor=...`
+- **RBAC**: Requires Admin privileges.
+
+### 2. Data Protection (PII)
+Sensitive fields (email, phone, address) in audit logs are **encrypted at rest** using AES-GCM (Fernet) before being allocated to storage or Kafka.
+
+### 3. Hardening
+- **Rate Limiting**: Integrated `slowapi`. Default limits apply.
+- **Security Headers**: HSTS, CSP, and X-Content-Type-Options are enforced via middleware.
+- **Vulnerability Scanning**: Use `scripts/security_scan.ps1` to run Bandit and Safety scans.
+
+### 4. Governance
+Refer to `docs/` for:
+- [Compliance Checklist](docs/compliance_checklist.md) (SOC2/ISO)
+- [Incident Playbook](docs/incident_playbook.md) (SOPs)
+
