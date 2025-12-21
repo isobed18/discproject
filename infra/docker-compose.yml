@@ -31,6 +31,7 @@ services:
     container_name: disc_redis
     ports:
       - "6379:6379"
+    command: redis-server --maxmemory 200mb --maxmemory-policy allkeys-lru --save "" --appendonly no
     networks:
       - disc-network
 

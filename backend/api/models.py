@@ -1,13 +1,11 @@
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 class CouponRequest(BaseModel):
     audience: str
     scope: str
-    resource: Optional[str] = None # The resource being accessed (for delegation checks)
+    resource: Optional[str] = None
     ttl_seconds: Optional[int] = 300
-    # In a real mTLS scenario, we might not need to pass cnf explicitly if we extract it from the cert
-    # But for MVP/testing, we might allow passing it or infer it.
 
 class DelegationRequest(BaseModel):
     delegate: str
