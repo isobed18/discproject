@@ -94,6 +94,13 @@ services:
       - backend
     networks:
       - disc-network
+  grafana:
+    image: grafana/grafana
+    container_name: disc_grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - disc-network
 
 networks:
   disc-network:
