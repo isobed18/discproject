@@ -1,13 +1,18 @@
-"""HTTP Gateway / sidecar-style coupon validator (POC).
+"""HTTP Gateway / sidecar-style coupon validator.
 
-Week 3 deliverables implemented here:
- - Intercepts all inbound HTTP requests.
- - Extracts Authorization: Bearer <coupon>.
- - Calls Coupon Authority /v1/verify.
- - Enforces coupon validity and purpose-binding (method + path) before forwarding.
- - Forwards the same coupon (Authorization header) to upstream services.
+Originally implemented as a single-file POC (Week 3). Week 5/6 backlog asked
+for *Gateway pluginization*, so the validation logic is now a configurable
+plugin pipeline.
 
-Out of scope: gRPC interceptors.
+Default pipeline:
+  1) VerifyWithCAPlugin   - calls /v1/verify on the Coupon Authority
+  2) PurposeBindingPlugin - enforces method+path binding
+
+Configure plugins via env var:
+  GATEWAY_PLUGINS=module:Class,module:Class
+
+Other config:
+  CA_BASE_URL, UPSTREAM_BASE_URL, UNPROTECTED_PATHS, GATEWAY_TIMEOUT_SECONDS
 """
 
 from __future__ import annotations
@@ -15,12 +20,14 @@ from __future__ import annotations
 import os
 import uuid
 from contextlib import asynccontextmanager
-from typing import Dict, Iterable, Optional, Set
+from typing import Dict, Optional, Set
 from urllib.parse import urljoin
 
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
+
+from .plugins import GatewayContext, load_plugins
 
 
 HOP_BY_HOP_HEADERS = {
@@ -40,61 +47,6 @@ def _env_list(name: str, default: str) -> Set[str]:
     return {item.strip() for item in raw.split(",") if item.strip()}
 
 
-def _derive_purpose_candidates(method: str, path: str) -> Set[str]:
-    """Derive purpose from HTTP request.
-
-Spec says "method + path"; delimiter isn't specified.
-To be robust (and still strict), we accept a small set of canonical encodings.
-"""
-    m = method.upper()
-    p = path if path.startswith("/") else f"/{path}"
-    return {
-        f"{m} {p}",
-        f"{m}:{p}",
-        f"{m}+{p}",
-        f"{m}{p}",
-    }
-
-
-def _parse_scopes(value: object) -> Set[str]:
-    if value is None:
-        return set()
-    if isinstance(value, (list, tuple, set)):
-        return {str(v).strip() for v in value if str(v).strip()}
-    if isinstance(value, str):
-        # allow common encodings: "a b", "a,b", "a; b"
-        parts: Iterable[str]
-        if "," in value:
-            parts = value.split(",")
-        elif ";" in value:
-            parts = value.split(";")
-        else:
-            parts = value.split()
-        return {p.strip() for p in parts if p.strip()}
-    return {str(value).strip()} if str(value).strip() else set()
-
-
-def _extract_coupon(request: Request) -> Optional[str]:
-    auth = request.headers.get("authorization")
-    if not auth:
-        return None
-    parts = auth.split(None, 1)
-    if len(parts) != 2:
-        return None
-    scheme, token = parts[0], parts[1]
-    if scheme.lower() != "bearer":
-        return None
-    token = token.strip()
-    return token or None
-
-
-def _purpose_matches_claims(claims: Dict[str, object], candidates: Set[str]) -> bool:
-    # "scope" is the primary claim in this repo; support a few common aliases.
-    scope_val = claims.get("scope") or claims.get("scp") or claims.get("purpose") or claims.get("pur")
-    scopes = _parse_scopes(scope_val)
-    return bool(scopes.intersection(candidates))
-
-
 def _filter_response_headers(headers: httpx.Headers) -> Dict[str, str]:
     out: Dict[str, str] = {}
     for k, v in headers.items():
@@ -104,135 +56,94 @@ def _filter_response_headers(headers: httpx.Headers) -> Dict[str, str]:
     return out
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Config
-    app.state.ca_base_url = os.getenv("CA_BASE_URL", "http://localhost:8000/v1").rstrip("/")
-    app.state.upstream_base_url = os.getenv("UPSTREAM_BASE_URL", "http://localhost:8001").rstrip("/")
-    app.state.gateway_id = os.getenv("GATEWAY_ID", "disc-gateway")
-    app.state.unprotected_paths = _env_list(
-        "UNPROTECTED_PATHS",
-        "/health,/ready,/live,/docs,/openapi.json",
-    )
-    timeout = float(os.getenv("GATEWAY_TIMEOUT_SECONDS", "10"))
+def create_app() -> FastAPI:
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        # Config
+        app.state.ca_base_url = os.getenv("CA_BASE_URL", "http://localhost:8000/v1").rstrip("/")
+        app.state.upstream_base_url = os.getenv("UPSTREAM_BASE_URL", "http://localhost:8001").rstrip("/")
+        app.state.gateway_id = os.getenv("GATEWAY_ID", "disc-gateway")
+        app.state.unprotected_paths = _env_list(
+            "UNPROTECTED_PATHS",
+            "/health,/ready,/live,/docs,/openapi.json",
+        )
+        timeout = float(os.getenv("GATEWAY_TIMEOUT_SECONDS", "10"))
 
-    app.state.http = httpx.AsyncClient(timeout=timeout)
-    try:
-        yield
-    finally:
-        await app.state.http.aclose()
+        app.state.http = httpx.AsyncClient(timeout=timeout)
+        app.state.plugins = load_plugins(app)
+        try:
+            yield
+        finally:
+            await app.state.http.aclose()
 
+    app = FastAPI(title="DISC Gateway", lifespan=lifespan)
 
-app = FastAPI(title="DISC Gateway (Week 3 POC)", lifespan=lifespan)
+    @app.get("/health")
+    async def health():
+        return {"status": "ok"}
 
+    @app.middleware("http")
+    async def coupon_validation_middleware(request: Request, call_next):
+        # Correlation ID propagation (traceability end-to-end)
+        corr_id = request.headers.get("x-correlation-id") or request.headers.get("x-request-id") or str(uuid.uuid4())
+        request.state.correlation_id = corr_id
 
-@app.get("/health")
-async def health():
-    return {"status": "ok"}
+        # Allow unprotected paths (health/docs)
+        if request.url.path in request.app.state.unprotected_paths:
+            resp = await call_next(request)
+            resp.headers["x-correlation-id"] = corr_id
+            return resp
 
+        ctx = GatewayContext(correlation_id=corr_id)
+        for plugin in request.app.state.plugins:
+            maybe_resp = await plugin.process(request, ctx)
+            if maybe_resp is not None:
+                maybe_resp.headers["x-correlation-id"] = corr_id
+                return maybe_resp
 
-@app.middleware("http")
-async def coupon_validation_middleware(request: Request, call_next):
-    # Correlation ID propagation (traceability end-to-end)
-    corr_id = request.headers.get("x-correlation-id") or request.headers.get("x-request-id") or str(uuid.uuid4())
-    request.state.correlation_id = corr_id
+        # Store for downstream handlers if needed.
+        request.state.coupon = ctx.coupon
+        request.state.coupon_claims = ctx.claims
 
-    # Intercept all inbound requests.
-    if request.url.path in request.app.state.unprotected_paths:
         resp = await call_next(request)
         resp.headers["x-correlation-id"] = corr_id
         return resp
 
-    coupon = _extract_coupon(request)
-    if not coupon:
-        return JSONResponse(status_code=401, content={"detail": "missing_coupon"})
+    @app.api_route("/{full_path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
+    async def proxy_to_upstream(full_path: str, request: Request):
+        upstream_url = urljoin(f"{request.app.state.upstream_base_url}/", full_path)
+        if request.url.query:
+            upstream_url = f"{upstream_url}?{request.url.query}"
 
-    verify_url = urljoin(f"{request.app.state.ca_base_url}/", "verify")
+        # Forward most headers. (Keep Authorization to satisfy outbound propagation.)
+        headers = {k: v for k, v in request.headers.items() if k.lower() not in {"host", "content-length"}}
 
-    try:
-        verify_resp = await request.app.state.http.post(
-            verify_url,
-            json={"coupon": coupon},
-            headers={
-                "x-correlation-id": corr_id,
-                "x-gateway-id": request.app.state.gateway_id,
-                "x-actor": "gateway",
-            },
-        )
-    except Exception:
-        return JSONResponse(status_code=503, content={"detail": "coupon_authority_unavailable"})
+        # Ensure correlation id and gateway id are always forwarded.
+        corr_id = getattr(request.state, "correlation_id", None) or request.headers.get("x-correlation-id")
+        if corr_id:
+            headers["x-correlation-id"] = corr_id
+        headers["x-gateway-id"] = request.app.state.gateway_id
 
-    if verify_resp.status_code != 200:
-        return JSONResponse(
-            status_code=503,
-            content={"detail": "coupon_authority_error", "status_code": verify_resp.status_code},
-        )
+        body = await request.body()
 
-    try:
-        data = verify_resp.json()
-    except Exception:
-        return JSONResponse(status_code=503, content={"detail": "coupon_authority_bad_response"})
+        try:
+            upstream_resp = await request.app.state.http.request(
+                method=request.method,
+                url=upstream_url,
+                headers=headers,
+                content=body,
+            )
+        except Exception:
+            return JSONResponse(status_code=502, content={"detail": "upstream_unavailable"})
 
-    if not data.get("valid"):
-        return JSONResponse(status_code=403, content={"detail": "invalid_coupon", "error": data.get("error")})
-
-    claims = data.get("claims") or {}
-
-    # Purpose binding enforcement at gateway level.
-    candidates = _derive_purpose_candidates(request.method, request.url.path)
-    if not _purpose_matches_claims(claims, candidates):
-        return JSONResponse(
-            status_code=403,
-            content={
-                "detail": "purpose_mismatch",
-                "expected": sorted(candidates),
-                "scope": claims.get("scope"),
-            },
+        return Response(
+            content=upstream_resp.content,
+            status_code=upstream_resp.status_code,
+            headers=_filter_response_headers(upstream_resp.headers),
+            media_type=upstream_resp.headers.get("content-type"),
         )
 
-    # Store for downstream handlers if needed.
-    request.state.coupon = coupon
-    request.state.coupon_claims = claims
-
-    resp = await call_next(request)
-    resp.headers["x-correlation-id"] = corr_id
-    return resp
+    return app
 
 
-@app.api_route("/{full_path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
-async def proxy_to_upstream(full_path: str, request: Request):
-    """Forward request to upstream service after coupon validation.
-
-    Outbound requirement: forward the *same coupon* to upstream.
-    (Inbound middleware already validated it.)
-    """
-    upstream_url = urljoin(f"{request.app.state.upstream_base_url}/", full_path)
-    if request.url.query:
-        upstream_url = f"{upstream_url}?{request.url.query}"
-
-    # Forward most headers. (Keep Authorization to satisfy outbound propagation.)
-    headers = {k: v for k, v in request.headers.items() if k.lower() not in {"host", "content-length"}}
-    # Ensure correlation id and gateway id are always forwarded.
-    corr_id = getattr(request.state, "correlation_id", None) or request.headers.get("x-correlation-id")
-    if corr_id:
-        headers["x-correlation-id"] = corr_id
-    headers["x-gateway-id"] = request.app.state.gateway_id
-
-    body = await request.body()
-
-    try:
-        upstream_resp = await request.app.state.http.request(
-            method=request.method,
-            url=upstream_url,
-            headers=headers,
-            content=body,
-        )
-    except Exception:
-        return JSONResponse(status_code=502, content={"detail": "upstream_unavailable"})
-
-    return Response(
-        content=upstream_resp.content,
-        status_code=upstream_resp.status_code,
-        headers=_filter_response_headers(upstream_resp.headers),
-        media_type=upstream_resp.headers.get("content-type"),
-    )
+app = create_app()

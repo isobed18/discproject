@@ -16,7 +16,7 @@ from api.models import (
     PartialEvalRequest,
 )
 
-from core.security import create_coupon, verify_coupon, verify_oidc_token, get_mtls_identity
+from core.security import create_coupon, verify_coupon, verify_oidc_token, get_mtls_identity, get_public_key_pem
 from services.revocation import revoke_jti, is_jti_revoked
 from services.delegation import add_delegation, get_delegations_for_resource
 from services.audit import audit_service
@@ -59,6 +59,16 @@ def _extract_request_info(request: Request) -> Dict[str, Any]:
 @router.get("/health", tags=["System"])
 async def health():
     return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
+
+
+@router.get("/public-key", tags=["System"])
+async def public_key():
+    """Expose the CA public key for local verification.
+
+    This enables SDK `offline_strategy="local"` by letting clients fetch and
+    cache the key material.
+    """
+    return {"public_key_pem": get_public_key_pem(), "kid": "v4.public"}
 
 @router.post("/issue", response_model=CouponResponse, tags=["Issuance"])
 @limiter.limit("5/minute")
@@ -150,11 +160,14 @@ async def issue_coupon(request: Request, body: CouponRequest, authorization: str
             request=_extract_request_info(request)
         )
         
-        return {
-            "coupon": coupon,
-            "expires_in": body.ttl_seconds,
-            "jti": "uuid-placeholder"
-        }
+        # Extract JTI (useful for revoke flows & debugging)
+        jti = None
+        try:
+            jti = verify_coupon(coupon).get("jti")
+        except Exception:
+            jti = None
+
+        return {"coupon": coupon, "expires_in": body.ttl_seconds, "jti": jti}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
