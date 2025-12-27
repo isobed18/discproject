@@ -27,6 +27,13 @@ class Settings(BaseSettings):
     # 32 url-safe base64-encoded bytes. Default is for dev only.
     FIELD_ENCRYPTION_KEY: str = "Jd87wj9L_f83mK-74sS2-d9f0_k3nC83_w84mF93kD0=" 
 
+    # PASETO signing keys (Week 5 SDK offline mode support)
+    # If not provided, keys are generated in-memory at startup (MVP).
+    PASETO_PRIVATE_KEY_PEM: Optional[str] = None
+    PASETO_PUBLIC_KEY_PEM: Optional[str] = None
+    PASETO_PRIVATE_KEY_PATH: Optional[str] = None
+    PASETO_PUBLIC_KEY_PATH: Optional[str] = None
+
 
     class Config:
         env_file = ".env"
