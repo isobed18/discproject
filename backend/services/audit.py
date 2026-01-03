@@ -1,6 +1,8 @@
 import json
 import logging
 import uuid
+import hmac     # <--- YENİ: Bunu ekle
+import hashlib  # <--- YENİ: Bunu ekle
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
@@ -13,7 +15,6 @@ from services.audit_store import audit_store
 from services.audit_indexer import audit_indexer
 
 logger = logging.getLogger(__name__)
-
 
 class AuditService:
     def __init__(self):
@@ -55,14 +56,9 @@ class AuditService:
         request: Optional[Dict[str, Any]] = None,
         extra: Optional[Dict[str, Any]] = None,
     ):
-        """Create a signed audit event and publish it to Kafka.
-
-        Week 4: This is also mirrored into an in-memory store so the Admin UI
-        can render events even when Kafka is unavailable in local dev.
-        """
+        """Create a signed audit event and publish it to Kafka."""
         
         # Week 4: PII Protection (Encryption at Rest)
-        # We encrypt specific keys in 'details' known to contain PII
         safe_details = details or {}
         pii_fields = {"email", "phone", "address", "pii_data"}
         
@@ -83,12 +79,32 @@ class AuditService:
             "correlation_id": correlation_id,
             "gateway": gateway,
             "request": request,
-            "details": encrypted_details, # Use encrypted version
+            "details": encrypted_details,
             "service": settings.PROJECT_NAME,
         }
         if extra:
-            # Non-breaking enrichment field.
             event_data["extra"] = extra
+
+        # --- YENİ EKLENEN KISIM: HMAC SIGNATURE ---
+        # Veriyi Kafka'ya veya Store'a göndermeden önce imzalıyoruz.
+        try:
+            # 1. Veriyi sıralı byte formatına çevir (Sıralama önemli)
+            serialized_data = json.dumps(event_data, sort_keys=True).encode('utf-8')
+            
+            # 2. Secret Key ile imzala (HMAC-SHA256)
+            signature = hmac.new(
+                settings.SECRET_KEY.encode('utf-8'),
+                serialized_data,
+                hashlib.sha256
+            ).hexdigest()
+            
+            # 3. İmzayı payload'a ekle
+            event_data["signature"] = signature
+            
+        except Exception as e:
+            logger.error(f"HMAC Signing failed: {e}")
+            event_data["signature"] = "signing-error"
+        # ------------------------------------------
 
         # Mirror locally (best-effort)
         try:
@@ -99,7 +115,9 @@ class AuditService:
         # Index in Redis (Week 4)
         await audit_indexer.index_event(event_data)
 
-        # 1) Sign the event (Non-repudiation)
+        # 1) Sign the event (Non-repudiation) with PASETO
+        # PASETO zaten veriyi sarmalıyor ama yukarıda eklediğimiz 'signature' alanı 
+        # artık payload'ın içinde yer alacak, böylece Dashboard'da JSON içinde görünecek.
         try:
             signed_token = pyseto.encode(private_key, event_data, footer={"kid": "v4.public"})
             if isinstance(signed_token, (bytes, bytearray)):
@@ -107,7 +125,7 @@ class AuditService:
             else:
                 message_bytes = str(signed_token).encode("utf-8")
         except Exception as e:
-            logger.error(f"Failed to sign audit event: {e}")
+            logger.error(f"Failed to sign audit event (PASETO): {e}")
             message_bytes = json.dumps(event_data).encode("utf-8")
 
         # 2) Publish to Kafka
@@ -119,7 +137,6 @@ class AuditService:
                 logger.error(f"Failed to send to Kafka: {e}")
         else:
             logger.warning("Kafka producer not available, skipping audit publish.")
-
 
 # Singleton instance
 audit_service = AuditService()

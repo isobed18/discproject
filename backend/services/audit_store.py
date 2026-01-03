@@ -86,6 +86,7 @@ class AuditEventStore:
             "gateway": event.get("gateway"),
             "request": event.get("request"),
             "details": event.get("details") or {},
+            "signature": event.get("signature"),
         }
 
         async with self._lock:
