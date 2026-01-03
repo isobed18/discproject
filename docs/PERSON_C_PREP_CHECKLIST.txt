@@ -1,0 +1,16 @@
+# DEMO PREP CHECKLIST: PERSON C
+
+## 1. Environment
+- [ ] Frontend Running (`npm run dev`)
+- [ ] Backend Running (for API access)
+
+## 2. Tools
+- [ ] Browser Open: `http://localhost:5173`
+- [ ] VS Code:
+    - [ ] `sdk/disc_sdk/client.py` (Show SDK code)
+    - [ ] `frontend/src/pages/DashboardPage.tsx` (Show UI code)
+    - [ ] `gateway/main.py` (Show Gateway POC)
+
+## 3. Pre-flight Check
+- [ ] Visit Dashboard -> Ensure graphs/stats are visible (not empty/loading forever).
+- [ ] Visit Audit Logs -> Ensure data is populated.

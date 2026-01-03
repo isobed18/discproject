@@ -9,7 +9,7 @@ import platform
 
 # Configuration
 # Allow overriding BASE_URL for CI environment
-BASE_URL = os.getenv("BASE_URL", "http://localhost:8005/v1")
+BASE_URL = os.getenv("BASE_URL", "http://localhost:8000/v1")
 ADMIN_USER = "admin"
 TEST_USER = "alice"
 RESOURCE_ID = "doc-verify-all"
@@ -145,7 +145,7 @@ def test_security_features(admin_token, user_token):
         log_fail("Rate Limit NOT enforced (Expected 429)")
 
     # 3.4 Security Headers
-    head = requests.get(f"http://localhost:8005/health")
+    head = requests.get(f"http://localhost:8000/health")
     if "X-Content-Type-Options" in head.headers:
         log_pass("Security Headers Middleware Active")
     else:

@@ -1,0 +1,15 @@
+# DEMO PREP CHECKLIST: PERSON A
+
+## 1. Environment
+- [ ] Backend Running (`uvicorn backend.main:app`)
+- [ ] Redis Running (`docker ps` -> `disc-redis`)
+
+## 2. Tools
+- [ ] VS Code Configured:
+    - [ ] `backend/core/security.py` (To show PASETO logic)
+    - [ ] `backend/api/models.py` (To show Schema)
+- [ ] Terminal Open: `c:\Users\ishak\discproject`
+
+## 3. Pre-flight Check
+- [ ] Verify `python scripts/demo_mint.py` works.
+- [ ] Verify `/health` endpoint matches 200 OK.
