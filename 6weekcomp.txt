@@ -1,0 +1,164 @@
+✅ A kişisi (Coupon Authority & Core Services)
+(Go/Rust + Redis + Postgres + OIDC + mTLS + gRPC/REST)
+Week 1
+•	Coupon schema v1 tasarımı
+(fields, TTL semantics, PoP binding, resource/action/purpose)
+•	ADR: authorized time source & clock-skew toleransı
+•	Issue/Verify/Revoke API kontratları (proto + REST design)
+•	First signed coupon & verifier stub
+•	Correlation-ID standardı (traceparent/baggage)
+•	POC: Redis/Postgres driver interfaces
+Week 2
+•	Issue/verify/revoke endpoint’lerin MVP’si
+•	Redis caching + introspection
+•	Fail-closed conventions: error codes taxonomy
+•	Revocation SLA definition (<2s typical)
+•	Nonce/replay guard pipeline
+•	OIDC + mTLS auth pipeline
+Week 3
+•	Sub-coupon issuance (scoped TTL, nested resource)
+•	Resource-scope validators
+•	Integration with Policy engine on path (OPA hook)
+•	Edge-cases:
+o	clock-drift
+o	subscriber offline/timeout fallback
+o	refresh/backoff logic
+•	Validate coupons over gRPC + REST
+Week 4
+•	Signed audit events emitting to Kafka
+•	Correlate “verify decision” with trace IDs
+•	Add distributed-tracing to authority
+•	Error categories for SDK and gateway
+Week 5
+•	Performance pass:
+p99 < 10 ms target for verification
+•	Redis eviction strategy + profiling
+•	Key-rotation safe path
+•	Replay-storm protection
+•	Memory & GC profiling
+Week 6
+•	Dual-auth migration support
+(legacy token + coupons)
+•	Pilot integration with sample service
+•	Metrics: adoption, error rates, revoke freshness
+•	Final security controls & artifact signing
+________________________________________
+________________________________________
+✅ B kişisi (DevOps/SRE & Observability)
+(K8s, Vault/KMS, mTLS, Kafka, Loki, Prom, Helm, CI/CD, Chaos Tests)
+Week 1
+•	K8s baseline + cluster security
+•	Deploy stack:
+o	Vault/KMS
+o	Postgres
+o	Redis
+o	Kafka
+o	Prometheus + Grafana
+o	Loki
+•	Helm chart base structure
+•	OTEL pipeline
+Week 2
+•	OIDC + mTLS cert lifecycle
+•	CI/CD secure supply-chain:
+o	SBOM (grype, trivy)
+o	Cosign signing
+•	Persistent volumes & backup strategy
+•	Kafka topics creation
+Week 3
+•	Signed policy bundles pipeline
+•	Gatekeeper/Kyverno baseline
+•	Network policies (service isolation)
+•	Canary deploy plan
+•	OTEL sampling rules tuning
+Week 4
+•	Grafana dashboards:
+o	latency
+o	revoke freshness
+o	event throughput
+•	Alerting rules:
+o	revoke staleness
+o	cache stampede
+o	KMS outage detection
+•	Kafka retention/compaction tuning
+Week 5
+•	DR scenario simulation
+•	Backup/restore validation
+•	Multi-AZ readiness
+•	Chaos tests:
+o	delete node
+o	revoke-storm
+o	TTL burst
+Week 6
+•	Production readiness checklist
+•	On-call runbooks & incident SOP
+•	Canary + rollback verification
+•	Final hardening + Gatekeeper templates
+________________________________________
+________________________________________
+✅ C kişisi (SDKs, CLI, Gateway)
+(Go/Node/Python SDKs, Gateway, Developer experience)
+Week 1
+•	SDK skeletons (Go/Node/Python)
+•	CLI initial version (mint/decode/validate)
+•	Correlation-ID propagation across HTTP/gRPC/Kafka
+•	Gateway RFC: which checks live where
+Week 2
+•	Purpose binding helpers
+•	Retry/backoff + refresh logic
+•	Example app calling Coupon Authority
+•	Customer-facing SDK docs
+Week 3
+•	Gateway inbound/outbound checks
+•	Tracing hooks + distributed tracing
+•	PoP (proof-of-possession) helper functions
+•	CLI enhancements: inspect, extract, verify
+Week 4
+•	Audit UI (simple Who-Did-What-When-Why)
+•	SDK structured logs + correlation IDs
+•	Kafka trace propagation confirmed
+Week 5
+•	SDK ergonomics:
+o	pluggable local cache rules
+o	retries
+o	auth-plugin architecture
+•	Contract tests (Pact)
+•	Plugin interface for sidecars
+Week 6
+•	Developer training materials
+•	CLI polish + onboarding
+•	Usage analytics
+•	Documentation & examples
+________________________________________
+________________________________________
+✅ D kişisi (Policy Engine, Security & Audit)
+(OPA/Rego/Cedar, Audit Logs, STRIDE)
+Week 1
+•	Decision: OPA/Rego for MVP
+•	Policy model v1:
+o	action/resource/scope/defaults
+•	STRIDE risk matrix
+•	Threat model ADR
+Week 2
+•	Policy allow/deny flow
+•	Audit event immutable envelope design
+•	Secure logging (Kafka)
+Week 3
+•	Delegation rules
+•	Partial-eval strategy
+•	Policy rollback incidents
+•	Key-rotation security assumptions
+Week 4
+•	Audit indexer
+•	Search API: who-did-what-when-why
+•	RBAC for audit search
+•	Encryption-at-rest/PII flow
+Week 5
+•	Pen-test + hardening
+•	Retention policies & governance
+•	Compliance checklist
+Week 6
+•	Policy gap analysis
+•	Finalized audit design
+•	Incident playbooks
+•	End-to-end policy evaluation
+

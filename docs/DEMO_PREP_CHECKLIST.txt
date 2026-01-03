@@ -1,0 +1,64 @@
+================================================================================
+DEMO PREP CHECKLIST (SUNUM ÖNCESİ HAZIRLIK)
+================================================================================
+Bu adımları sunuma başlamadan EN AZ 15 DAKİKA ÖNCE uygulayın. 
+Amaç, sunum sırasında "Server açılıyor...", "Docker iniyor..." gibi beklemeleri yok etmektir.
+
+--------------------------------------------------------------------------------
+1. ALTYAPIYI BAŞLAT (INFRASTRUCTURE)
+--------------------------------------------------------------------------------
+Terminal 1 (Root dizinde):
+[ ] Docker Servislerini Başlat:
+    `docker-compose -f infra/docker-compose.yml up -d`
+[ ] Kontrol Et:
+    `docker ps` 
+    (disc_redis ve disc_opa ayakta olmalı)
+
+--------------------------------------------------------------------------------
+2. BACKEND & POLICY YÜKLEME
+--------------------------------------------------------------------------------
+Terminal 2 (Root dizinde):
+[ ] Backend'i Başlat:
+    `$env:PYTHONPATH="backend"; venv\Scripts\python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000`
+    (Hata verirse venv'i aktive ettiğinizden emin olun)
+
+Terminal 3 (Komutlar için hazır bekleyecek):
+[ ] OPA'ya Policy Yükle (Backend hazır olunca):
+    `curl -X PUT --data-binary @backend/policies/main.rego http://localhost:8181/v1/policies/disc/authz`
+
+--------------------------------------------------------------------------------
+3. FRONTEND (ADMIN UI) - GÖRSELLİK İÇİN
+--------------------------------------------------------------------------------
+Terminal 4:
+[ ] Frontend'i Başlat:
+    `cd frontend`
+    `npm run dev`
+[ ] Tarayıcıda Aç: `http://localhost:5173`
+    - "Audit Logs" sekmesine tıklayın ve açık bırakın. (Log aktıkça buraya düşecek, CLI yerine buradan göstermek daha etkileyici olur).
+
+--------------------------------------------------------------------------------
+4. VS CODE TABLARI (HAZIRLAMA)
+--------------------------------------------------------------------------------
+Sunum sırasında dosya aramakla vakit kaybetmemek için şu dosyaları şimdiden açın:
+
+[ ] Tab 1: `backend/policies/main.rego` (Week 1 - OPA Kuralları için)
+[ ] Tab 2: `backend/services/audit.py` (Week 4 - Encryption kodu için)
+[ ] Tab 3: `docs/incident_playbook.md` (Week 6 - Governance için)
+[ ] Tab 4: `docs/DEMO_QA_PERSON_D.txt` (Kopya kağıdınız - Soru/Cevaplar)
+
+--------------------------------------------------------------------------------
+5. SON KONTROL (SMOKE TEST)
+--------------------------------------------------------------------------------
+Sunumda rezil olmamak için her şeyin çalıştığını hızlıca test edin:
+
+[ ] Health Check:
+    `curl http://localhost:8000/health` -> {"status":"healthy"} dönmeli.
+
+[ ] Test Token Oluştur (Kenarda dursun):
+    `python cli/create_test_token.py testuser`
+    (Çıkan token'ı kopyalayıp bir not defterine yapıştırın, lazım olabilir).
+
+--------------------------------------------------------------------------------
+ARTIK HAZIRSINIZ! 🚀
+Sunuma başladığınızda sadece pencereler arasında (Alt+Tab) geçiş yapmanız gerekecek.
+================================================================================

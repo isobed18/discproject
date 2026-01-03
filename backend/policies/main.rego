@@ -2,35 +2,34 @@ package disc.authz
 
 import rego.v1
 
-# Varsayılan: Her şeyi REDDET
+# Varsayilan: Her seyi REDDET
 default allow := false
 
-# 1. ISSUE COUPON (Kupon Üretme)
+# 1. ISSUE COUPON (Kupon Uretme)
 allow if {
     input.path == "/issue"
     input.method == "POST"
     
-    # --- DÜZELTME ---
-    # Backend token'ı zaten doğruladı (verify_oidc_token).
-    # OPA olarak sadece "Bu kullanıcı Anonim mi?" diye bakmamız yeterli.
-    # Eğer "anonymous" değilse, geçerli bir token ile gelmiştir.
+    # --- DUZELTME ---
+    # Backend token'i zaten dogruladi (verify_oidc_token).
+    # OPA olarak sadece "Bu kullanici Anonim mi?" diye bakmamiz yeterli.
     input.token.sub != "anonymous"
 }
 
-# 2. VERIFY (Doğrulama) - Herkese açık
+# 2. VERIFY (Dogrulama) - Herkese acik
 allow if {
     input.path == "/verify"
     input.method == "POST"
 }
 
-# 3. ADMIN İŞLEMLERİ (Audit Logs & Revoke)
-# Burası sıkı kalmalı. Sadece 'admin' yetkisi olanlar girebilir.
+# 3. ADMIN ISLEMLERI (Audit Logs & Revoke)
+# Burasi siki kalmali. Sadece 'admin' yetkisi olanlar girebilir.
 allow if {
     is_admin_endpoint
-    # Token scope içinde "admin" yazıyor mu?
+    # Token scope icinde "admin" yaziyor mu?
     contains(input.token.scope, "admin")
 }
 
-# Yardımcı Kurallar
+# Yardimci Kurallar
 is_admin_endpoint if startswith(input.path, "/audit")
 is_admin_endpoint if input.path == "/revoke"

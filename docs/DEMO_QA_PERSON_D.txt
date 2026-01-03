@@ -1,0 +1,100 @@
+================================================================================
+PERSON D: DEMO & QA SCRIPT (SECURITY & COMPLIANCE)
+================================================================================
+
+Bu dosya, Person D (Security Lead) tarafından yapılacak sunum için hazırlanmış kapsamlı bir rehberdir. 
+İçerik iki ana bölüme ayrılmıştır:
+1. SİZİN SUNUMUNUZ (Neler Yaptım? - Canlı Demo)
+2. CEVAPLAR VE SENARYOLAR (Gelebilecek Sorular & Edge Case'ler)
+
+--------------------------------------------------------------------------------
+BÖLÜM 1: SİZİN SUNUMUNUZ (SHOWCASE)
+--------------------------------------------------------------------------------
+
+GİRİŞ (1 Dakika):
+"Merhaba, ben bu projede 'Person D' yani 'Security & Policy Lead' rolünü üstlendim. 
+6 haftalık süreçte ana sorumluluğum, uygulamanın sadece 'çalışmasını' değil, 
+'güvenli, denetlenebilir ve kurumsal standartlara (SOC 2)' uygun çalışmasını sağlamaktı."
+
+NELER YAPTIM? (Özet):
+1.  **Policy as Code (OPA):** Yetkilendirme kurallarını koddan ayırdım.
+2.  **Secure Logging:** İmzalı ve değiştirilemez (immutable) audit loglar.
+3.  **Data Protection:** Veritabanında hassas verileri şifreledim (Encryption at Rest).
+4.  **Hardening:** Rate Limiting ve Güvenlik Headerları ile saldırı yüzeyini daralttım.
+
+... "Lafı uzatmadan canlı demoya geçiyorum." ...
+
+--------------------------------------------------------------------------------
+DEMO ADIM 1: POLICY ENGINE (OPA)
+--------------------------------------------------------------------------------
+"İlk olarak, yetki kurallarımızın nasıl çalıştığını göstereyim. Kurallarımız kodun içinde değil, harici bir Rego dosyasındadır."
+
+1. VS Code'da `backend/policies/main.rego` dosyasını gösterin.
+   - "Default allow = false" satırını vurgulayın.
+2. Terminal'de Policy Yükleme komutunu çalıştırın:
+   `curl -X PUT --data-binary @backend/policies/main.rego http://localhost:8181/v1/policies/disc/authz`
+
+--------------------------------------------------------------------------------
+DEMO ADIM 2: SECURE FLOW (MINTING + AUDIT + ENCRYPTION)
+--------------------------------------------------------------------------------
+"Şimdi güvenli bir işlem yapalım. Normalde CLI üzerinden anonim istek atıldığında sistem reddeder (403). Bu yüzden yetkili bir 'token' ile işlem yapan secure script'imi çalıştıracağım."
+
+1. Script'i çalıştırın:
+   `python scripts/demo_mint.py`
+   
+   (Bu script şunları yapar:
+    - OIDC standartlarına uygun, imzalı bir Admin Token üretir.
+    - `/issue` servisine 'Authorization: Bearer ...' header'ı ile gider.
+    - Kuponu alır ve ekrana basar.)
+
+2. **GÖRSEL ŞOV:** Hemen Tarayıcıya (`http://localhost:5173`) gidin ve "Audit Logs" sekmesine tıklayın.
+   - En üstte yeni düşen logu gösterin.
+   - Detayına tıklayın ve **Signature** alanını gösterin. "Logumuz kriptografik olarak imzalandı."
+   - "Ayrıca log içindeki hassas veriler veritabanında şifreli duruyor, sadece şu an admin olduğum için açık görüyorum."
+
+--------------------------------------------------------------------------------
+DEMO ADIM 3: GOVERNANCE & PLAYBOOKS
+--------------------------------------------------------------------------------
+"Teknik önlemlerin yanında süreçlerimizi de garantiye aldık."
+
+1. VS Code'da `docs/incident_playbook.md` dosyasını açın.
+   - "Bir güvenlik ihlali durumunda (örneğin Key Compromise) yapılacaklar adım adım burada yazılı."
+
+--------------------------------------------------------------------------------
+BÖLÜM 2: SORU-CEVAP VE SENARYOLAR (QA)
+--------------------------------------------------------------------------------
+Buradaki sorular, sunum sonrası "Saldırgan şunu yaparsa ne olur?" diye sorulduğunda yapılacak demolardır.
+
+--------------------------------------------------------------------------------
+SORU 1: SALDIRI DAYANIKLILIĞI (RATE LIMITING)
+--------------------------------------------------------------------------------
+Soru: "API'niz DoS saldırılarına açık mı? Bir bot saniyede binlerce istek atarsa ne olur?"
+
+Cevap: "Uygulama katmanında `SlowAPI` ve Redis kullanarak Rate Limiting uyguluyoruz. Sınır aşılınca sistem otomatik olarak `429 Too Many Requests` döner."
+
+DEMO:
+Terminal'de loop ile saldırı simülasyonu yapın:
+`1..10 | % { Invoke-RestMethod -Uri "http://localhost:8000/health" -Method Get }`
+(İlk 5 istek OK, sonrakilerde 429 hatası görülecek).
+
+--------------------------------------------------------------------------------
+SORU 2: DELEGASYON (YETKİ DEVRİ)
+--------------------------------------------------------------------------------
+Soru: "İzinli olduğumda yetkimi başkasına devredebilir miyim?"
+
+Cevap: "Evet, Delegation Service ile bu mümkün. OPA, yetki kontrolü yaparken bu delegasyonları da dikkate alır."
+
+DEMO:
+`curl -X POST "http://localhost:8000/v1/delegations" -H "Content-Type: application/json" -d "{\"delegate\": \"mehmet\", \"resource\": \"gizli-belge\", \"ttl\": 3600}"`
+
+--------------------------------------------------------------------------------
+SORU 3: LOG GÜVENLİĞİ
+--------------------------------------------------------------------------------
+Soru: "Admin veritabanına girip logları değiştiremez mi?"
+
+Cevap: "Değiştirebilir ama imzayı (signature) taklit edemez. Her log kaydı oluşturulduğu anda özel bir anahtarla imzalanır. Log doğrulama aracımız, imzası bozulmuş veya zinciri kopmuş logları anında tespit eder (Tamper Evidence)."
+
+--------------------------------------------------------------------------------
+KAPANIŞ
+--------------------------------------------------------------------------------
+"Özetle; Person D olarak DISC projesini, 'Güvenlik sonradan eklenmez, tasarımla (by design) gelir' prensibiyle, uçtan uca güvenli hale getirdim."
