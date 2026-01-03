@@ -1,0 +1,13 @@
+“CLI ile bir kupon/token üretebiliyor ve sonra doğrulayabiliyor muyum?”
+Cevap (ne söyle)
+ “Evet. Bu sprintte benim için önemli olan şey: komut satırından (CLI) token üretmek ve yine aynı araçla doğrulamak. Böylece UI olmasa bile sistemi hızlı test edebiliyoruz. ‘Ürettim mi? Çalışıyor mu? Doğru mu?’ gibi soruları birkaç komutla kontrol etmek mümkün oluyor. Bu da hem geliştirmeyi hem QA’i hızlandırıyor.”
+
+
+“Gateway, doğru token yoksa isteği engelliyor mu?”
+Cevap (ne söyle)
+ “Evet. Bu sprintte gateway’in amacı şuydu: sistemin önünde duran bir kapı gibi davranmak. Eğer token yoksa ya da geçerli değilse, gateway isteği iç servise geçirmiyor. Bu şekilde servisler direkt açık kalmıyor; önce gateway kontrol yapıyor. Bu da güvenlik ve kontrol açısından önemli bir adım.”
+
+Soru:
+ “Admin panelinden revoke (iptal) yapabiliyor muyum ve bunun log’da göründüğünü gösterebiliyor muyum?”
+Cevap (ne söyle)
+ “Evet. Bu sprintte UI’nın ‘sadece görüntü’ değil, gerçekten iş yapan bir panel olması hedeflendi. Admin panelinden bir token’ı iptal edebiliyorum (revoke). Sonra da audit/log ekranında bu iptal işlemini görebiliyorum. Böylece ‘iptal edildi mi edilmedi mi?’ sorusu net şekilde cevaplanıyor.”
