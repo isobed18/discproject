@@ -45,10 +45,12 @@ async def lifespan(app: FastAPI):
     # Startup: Start Kafka producer and consumer
     await audit_service.start()
     await kafka_audit_consumer.start()
+    
     yield
     # Shutdown: Stop Kafka consumer and producer
     await kafka_audit_consumer.stop()
     await audit_service.stop()
+
 
 
 app = FastAPI(
@@ -63,33 +65,6 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Week 5: Security Headers
 app.add_middleware(SecurityHeadersMiddleware)
-
-
-@app.middleware("http")
-async def correlation_and_metrics_middleware(request: Request, call_next):
-    # Correlation-ID (end-to-end traceability)
-    correlation_id = (
-        request.headers.get("x-correlation-id")
-        or request.headers.get("x-request-id")
-        or str(uuid.uuid4())
-    )
-    request.state.correlation_id = correlation_id
-
-    start = time.perf_counter()
-    status_code = 500
-    try:
-        response = await call_next(request)
-        status_code = response.status_code
-    finally:
-        route = _derive_route_label(request.url.path)
-        HTTP_REQUESTS_TOTAL.labels(route=route, method=request.method, status=str(status_code)).inc()
-        HTTP_REQUEST_LATENCY_SECONDS.labels(route=route, method=request.method).observe(
-            max(time.perf_counter() - start, 0)
-        )
-
-    response.headers["x-correlation-id"] = correlation_id
-    return response
-
 
 app.add_middleware(
     CORSMiddleware,
@@ -117,3 +92,44 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+@app.middleware("http")
+async def correlation_and_metrics_middleware(request: Request, call_next):
+    """
+    Correlation ID ve Metrik Middleware'i
+    Gelen istekte 'X-Correlation-ID' varsa onu kullanır, yoksa yeni üretir.
+    """
+    import uuid
+    
+    # 1. MİSAFİR KARTI KONTROLÜ (Gelen ID var mı?)
+    # Header'dan 'x-correlation-id' veya 'X-Correlation-ID' okumaya çalış
+    correlation_id = request.headers.get("x-correlation-id") or request.headers.get("X-Correlation-ID")
+    
+    # 2. Yoksa yeni kart bas (UUID)
+    if not correlation_id:
+        correlation_id = str(uuid.uuid4())
+
+    # 3. Bu ID'yi Context'e işle (Loglama için)
+    request.state.correlation_id = correlation_id
+    
+    # ContextVar güncelle (Loglarda görünmesi için)
+    # (Eğer projenin core/logging.py yapısında contextvar varsa burası otomatik işler)
+    
+    # 4. İsteği Devam Ettir (Zaman ölçümü)
+    start_time = time.time()
+    try:
+        response = await call_next(request)
+    except Exception as e:
+        # Hata durumunda bile süreyi ölç
+        process_time = time.time() - start_time
+        # Hataları logla (Opsiyonel)
+        raise e
+
+    process_time = time.time() - start_time
+    
+    # 5. Cevaba ID'yi ekle (Frontend görsün diye)
+    response.headers["X-Correlation-ID"] = correlation_id
+    response.headers["X-Process-Time"] = str(process_time)
+    
+    return response

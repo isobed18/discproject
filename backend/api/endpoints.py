@@ -72,10 +72,25 @@ async def public_key():
 
 @router.post("/issue", response_model=CouponResponse, tags=["Issuance"])
 @limiter.limit("5/minute")
-async def issue_coupon(request: Request, body: CouponRequest, authorization: str = Header(None)):
+async def issue_coupon(
+    request: Request, 
+    body: CouponRequest, 
+    authorization: str = Header(None),
+    # --- EKLEME: Özel ID'yi Header'dan okuyoruz ---
+    x_correlation_id: str = Header(None, alias="X-Correlation-ID")
+):
     """
     Issue a scoped, short-lived coupon.
+    Full implementation with OPA, OIDC, Metrics and Traceability.
     """
+    
+    # --- 0. CORRELATION ID BELİRLEME (YENİ KISIM) ---
+    # Eğer header ile özel bir ID geldiyse onu kullan, yoksa sistem türetsin.
+    final_correlation_id = x_correlation_id
+    if not final_correlation_id:
+        # Senin mevcut helper fonksiyonun çalışmaya devam eder
+        final_correlation_id = _derive_correlation_id(request)
+
     # 1. Authentication (GÜNCELLENDİ: Hem HS256 hem RS256 destekler)
     identity = "anonymous"
     scopes = "none"
@@ -131,7 +146,8 @@ async def issue_coupon(request: Request, body: CouponRequest, authorization: str
             action="issue",
             resource=body.resource or "n/a",
             details={"reason": "Policy denied", "scope": body.scope},
-            correlation_id=_derive_correlation_id(request),
+            # --- GÜNCELLEME: Belirlediğimiz final ID'yi kullanıyoruz ---
+            correlation_id=final_correlation_id,
             gateway=_extract_gateway_info(request),
             request=_extract_request_info(request)
         )
@@ -155,7 +171,8 @@ async def issue_coupon(request: Request, body: CouponRequest, authorization: str
             action="issue",
             resource=body.resource or "n/a",
             details={"audience": body.audience, "scope": body.scope, "ttl": body.ttl_seconds},
-            correlation_id=_derive_correlation_id(request),
+            # --- GÜNCELLEME: Belirlediğimiz final ID'yi kullanıyoruz ---
+            correlation_id=final_correlation_id,
             gateway=_extract_gateway_info(request),
             request=_extract_request_info(request)
         )
@@ -167,7 +184,13 @@ async def issue_coupon(request: Request, body: CouponRequest, authorization: str
         except Exception:
             jti = None
 
-        return {"coupon": coupon, "expires_in": body.ttl_seconds, "jti": jti}
+        return {
+            "coupon": coupon, 
+            "expires_in": body.ttl_seconds, 
+            "jti": jti,
+            # İstersen cevaba da ekleyebilirsin, debug için iyi olur:
+            "correlation_id": final_correlation_id 
+        }
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -247,7 +270,7 @@ async def search_audit_logs_endpoint(
         raise HTTPException(status_code=403, detail="Admin access required")
 
     if audit_indexer:
-        return await audit_indexer.search_audit_logs(actor=actor, action=action, limit=limit)
+        return await audit_indexer.search(actor=actor, action=action, limit=limit)
     return []
 
 @router.post("/delegation", tags=["Policy"])
@@ -258,3 +281,81 @@ async def create_delegation(body: DelegationRequest):
 @router.post("/policy/partial-eval", tags=["Policy"])
 async def partial_eval(body: PartialEvalRequest):
     return {"result": {"allow": True, "conditions": ["always_true"]}}
+
+# --- FRONTEND UYUM YAMASI (FORMAT DÜZELTME) ---
+
+@router.get("/audit-events", tags=["Audit"])
+async def audit_events_adapter(
+    request: Request,
+    limit: int = 200,
+    offset: int = 0,
+    authorization: str = Header(None)
+):
+    # Verileri senin kodunla (Hybrid Indexer) çekiyoruz
+    # Dashboard'un kullandığı search fonksiyonunu kullanıyoruz
+    results = await audit_indexer.search(limit=limit)
+    
+    # Kilit Nokta: Frontend'e veriyi "items" kutusu içinde sunuyoruz
+    return {
+        "items": results,      # Veriler burada
+        "total": len(results), # Toplam sayı
+        "limit": limit,
+        "offset": offset
+    }
+
+@router.get("/kafka-events", tags=["System"])
+async def kafka_events_adapter(
+    request: Request,
+    limit: int = 200,
+    offset: int = 0,
+    authorization: str = Header(None)
+):
+    # Kafka için de aynısı
+    results = await audit_indexer.search(limit=limit)
+    return {
+        "items": results,
+        "total": len(results),
+        "limit": limit,
+        "offset": offset
+    }
+
+# --- TRACEABILITY DASHBOARD YAMASI (DÜZELTİLMİŞ) ---
+
+
+@router.get("/trace/correlation/{correlation_id}", tags=["Audit"])
+async def get_trace_chain(
+    correlation_id: str,
+    limit: int = 1000,
+    authorization: str = Header(None)
+):
+
+    trace_chain = await audit_indexer.search(correlation_id=correlation_id, limit=limit)
+    
+    return trace_chain
+
+# --- TRACEABILITY DASHBOARD: RESOURCE/JTI YAMASI ---
+
+@router.get("/trace/resource/{jti}", tags=["Audit"])
+async def get_trace_resource(
+    jti: str,
+    limit: int = 1000,
+    authorization: str = Header(None)
+):
+    """
+    Trace Dashboard 'Resource / JTI' modunda buraya istek atar.
+    Gelen ID'yi hem 'resource' hem de 'token_id' alanlarında ararız.
+    """
+    try:
+        # Son kayıtları çek
+        all_logs = await audit_indexer.search(limit=limit)
+    except Exception:
+        return []
+    
+    # Python tarafında akıllı filtreleme yap
+    # Gelen 'jti' değeri, loglardaki 'resource' YA DA 'token_id' ile eşleşiyor mu?
+    trace_chain = [
+        log for log in all_logs 
+        if log.get("resource") == jti or log.get("token_id") == jti
+    ]
+    
+    return trace_chain
