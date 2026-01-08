@@ -1,0 +1,16 @@
+# DEMO PREP CHECKLIST: PERSON B
+
+## 1. Environment
+- [ ] Docker Services Health:
+    - [ ] `docker ps` shows: `disc-redis`, `disc-opa`, `disc-kafka`, `disc-zookeeper`.
+- [ ] Backend Metrics:
+    - [ ] `curl http://localhost:8000/metrics` returns 200 OK.
+
+## 2. Tools
+- [ ] VS Code:
+    - [ ] `infra/docker-compose.yml` (Open to show stack)
+    - [ ] `.github/workflows/ci.yml` (Open to show pipeline)
+    - [ ] `ops/dashboards/main_dashboard.json` (Open to show Grafana config)
+
+## 3. Pre-flight Check
+- [ ] Check Kafka connection logs in backend terminal (Ensure no connection errors).

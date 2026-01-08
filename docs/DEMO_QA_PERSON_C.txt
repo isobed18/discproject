@@ -1,0 +1,38 @@
+================================================================================
+PERSON C: DEMO & QA SCRIPT (SDK & FRONTEND)
+================================================================================
+
+BÖLÜM 1: DEVELOPER EXPERIENCE (DX)
+--------------------------------------------------------------------------------
+Konuşma:
+"Ben Person C. Güçlü bir motor (Backend) yapmak yetmez, onu kullanacak direksiyonu (SDK & UI) da vermek gerekir. Odak noktam Geliştirici Deneyimi."
+
+--------------------------------------------------------------------------------
+DEMO 1: ADMIN DASHBOARD (FRONTEND)
+--------------------------------------------------------------------------------
+1. **DASHBOARD:**
+   Tarayıcıda `http://localhost:5173` adresini açın.
+   "Backend'de olup biten her şeyi (Issue sayıları, Hatalar, Audit Loglar) buradan izliyoruz."
+
+2. **AUDIT LOGS UI:**
+   "Ham JSON logları okumak zordur. UI tarafında bunları zenginleştirip, aranabilir hale getirdik."
+   (Logları filtreleyerek veya detayını açarak gösterin).
+
+--------------------------------------------------------------------------------
+DEMO 2: SDK & CLIENTS
+--------------------------------------------------------------------------------
+1. **PYTHON SDK:**
+   "Geliştiriciler kripto ile uğraşmasın diye `disc_sdk` kütüphanesini yazdım. Retry, Backoff ve Token yönetimi içinde hazır."
+
+--------------------------------------------------------------------------------
+QA (SORU - CEVAP)
+--------------------------------------------------------------------------------
+
+Soru 1: "UI hangi teknolojiyi kullanıyor?"
+Cevap: "React ve Vite kullandık. Backend ile REST API üzerinden konuşuyor. Hızlı ve responsive."
+
+Soru 2: "Gateway projesi nedir?"
+Cevap: "Mikroservis mimarisinde her servisin tek tek auth kontrolü yapması yerine, bu kontrolü kapıya (Gateway) taşıdığımız bir POC (Proof of Concept) çalışmasıdır (`gateway/main.py`)."
+
+Soru 3: "SDK güncellemesi nasıl yapılır?"
+Cevap: "Semantik versiyonlama kullanıyoruz. API kontratı değişirse SDK majör versiyon atlar. Geriye dönük uyumluluk (Backward Compatibility) önceliğimiz."

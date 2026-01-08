@@ -1,0 +1,41 @@
+================================================================================
+PERSON A: DEMO & QA SCRIPT (CORE SERVICES)
+================================================================================
+
+BÖLÜM 1: TECHNICAL DEEP DIVE
+--------------------------------------------------------------------------------
+Konuşma:
+"Merhaba, ben Core Services Lead (Person A). Projenin kalbini, yani Coupon Authority servisinin kendisini tasarladım. Odak noktam Performans ve Güvenli Protokol tasarımıydı."
+
+--------------------------------------------------------------------------------
+DEMO 1: THE COUPON LIFECYCLE
+--------------------------------------------------------------------------------
+"Basit bir JWT kullanmadık. PASETO (Platform-Agnostic Security Tokens) standardını uyguladım. Gelin bir kuponun yaşam döngüsüne bakalım."
+
+1. **ISSUE (Yaratma):**
+   `python scripts/demo_mint.py`
+   (Ekrana düşen token'ı kopyalayın).
+
+2. **VERIFY (Doğrulama):**
+   "Servislerimiz bu token'ı aldığında saniyeler içinde doğrular. Veritabanına gitmez, kriptografik imza kontrolü yapar (Stateless)."
+   
+   (Opsiyonel: Curl ile /verify endpoint'ine atın veya sadece anlatın).
+
+3. **REVOKE (İptal - Kill Switch):**
+   "Ama ya token çalınırsa? İşte burada Redis devreye girer."
+   
+   Komut: (Eğer Postman varsa oradan, yoksa curl ile)
+   `curl -X POST "http://localhost:8000/v1/revoke" -H "Authorization: Bearer <TOKEN>" -H "Content-Type: application/json" -d "{\"jti\": \"<JTI_GUID>\", \"reason\": \"compromised\"}"`
+
+--------------------------------------------------------------------------------
+QA (SORU - CEVAP)
+--------------------------------------------------------------------------------
+
+Soru 1: "Neden JWT değil de PASETO?"
+Cevap: "JWT'de 'alg: none' saldırıları gibi tasarım hataları var. PASETO versiyonlanmış (v4) ve güvenli (public/private key) şifreleme sunar. Geliştirici hatasına yer bırakmaz."
+
+Soru 2: "Sisteminiz ne kadar yük kaldırır?"
+Cevap: "Verify işlemi tamamen stateless (imza kontrolü). Sadece Revoke kontrolü için Redis'e gidiyoruz (O(1) complexity). Dolayısıyla yatayda (Horizontal auto-scaling) rahatça büyüyebiliriz."
+
+Soru 3: "OIDC entegrasyonu nasıl çalışıyor?"
+Cevap: "Google veya Okta gibi Identity Provider'lardan gelen kimliği alıp, kendi iç 'Coupon' yapımıza dönüştürüyoruz (Token Exchange Pattern). Böylece dış dünyaya bağımlılığımızı izole ediyoruz."

@@ -1,0 +1,45 @@
+================================================================================
+PERSON B: DEMO & QA SCRIPT (DEVOPS & SRE)
+================================================================================
+
+BÖLÜM 1: PLATFORM OVERVIEW
+--------------------------------------------------------------------------------
+Konuşma:
+"Ben Person B, DevOps ve SRE sorumlusuyum. Kodun çalışacağı fabrika hattını (Pipeline) ve işletim ortamını (Infrastructure) kurdum."
+
+--------------------------------------------------------------------------------
+DEMO 1: OBSERVABILITY (GÖRÜNÜR KILMAK)
+--------------------------------------------------------------------------------
+
+1. **METRICS:**
+   "Sistemimiz kör uçuş yapmıyor. Prometheus uyumlu metrikler üretiyoruz."
+   
+   Komut:
+   `curl -s http://localhost:8000/metrics`
+   (Ekrana akan `issue_total`, `http_requests_total` gibi satırları gösterin).
+
+2. **DASHBOARDS:**
+   "Bu metrikleri anlamlı panellere dönüştürdük. Grafana şablonlarımız kod olarak versiyonlanıyor (`ops/dashboards`)."
+
+--------------------------------------------------------------------------------
+DEMO 2: INFRASTRUCTURE AS CODE
+--------------------------------------------------------------------------------
+1. **DOCKER STACK:**
+   "Tüm bağımlılıklar (Redis, OPA, Kafka) Docker Compose ile tek komutla kalkar."
+   
+   Komut:
+   `docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"`
+   (Servislerin ayakta olduğunu gösterin).
+
+--------------------------------------------------------------------------------
+QA (SORU - CEVAP)
+--------------------------------------------------------------------------------
+
+Soru 1: "Neden Kafka gibi ağır bir teknoloji?"
+Cevap: "Audit loglarının kaybolmaması kritikti (Non-repudiation). Redis hızlıdır ama Kafka dayanıklıdır (Durability). Audit loglarını diske yazarak (Retention) geriye dönük inceleme imkanı sağladık."
+
+Soru 2: "CI/CD sürecinizde güvenlik var mı?"
+Cevap: "Evet, GitHub Actions workflow'umuzda ( `ci.yml` ) sadece testler koşmuyor, ilerde imaj imzalama (Cosign) ve SBOM (Software Bill of Materials) üretimi de bu hatta entegre."
+
+Soru 3: "Sistem çökse ne olur?"
+Cevap: "Redis 'Append Only File' (AOF) modunda, veri kaybı minimal. Kafka zaten dağıtık. Backend stateless olduğu için anında yeniden başlatılabilir (Restart Policy: always)."

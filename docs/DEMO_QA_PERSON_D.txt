@@ -1,0 +1,241 @@
+================================================================================
+PERSON D: DEMO & QA SCRIPT (SECURITY & COMPLIANCE)
+================================================================================
+
+Bu dosya, Person D (Security Lead) tarafından yapılacak sunum için hazırlanmış kapsamlı bir rehberdir. 
+İçerik iki ana bölüme ayrılmıştır:
+1. SİZİN SUNUMUNUZ (Neler Yaptım? - Canlı Demo)
+2. CEVAPLAR VE SENARYOLAR (Gelebilecek Sorular & Edge Case'ler)
+
+--------------------------------------------------------------------------------
+BÖLÜM 1: SİZİN SUNUMUNUZ (SHOWCASE)
+--------------------------------------------------------------------------------
+
+GİRİŞ (1 Dakika):
+"Merhaba, ben bu projede 'Person D' yani 'Security & Policy Lead' rolünü üstlendim. 
+6 haftalık süreçte ana sorumluluğum, uygulamanın sadece 'çalışmasını' değil, 
+'güvenli, denetlenebilir ve kurumsal standartlara (SOC 2)' uygun çalışmasını sağlamaktı."
+
+NELER YAPTIM? (Özet):
+1.  **Policy as Code (OPA):** Yetkilendirme kurallarını koddan ayırdım.
+2.  **Secure Logging:** İmzalı ve değiştirilemez (immutable) audit loglar.
+3.  **Data Protection:** Veritabanında hassas verileri şifreledim (Encryption at Rest).
+4.  **Hardening:** Rate Limiting ve Güvenlik Headerları ile saldırı yüzeyini daralttım.
+
+... "Lafı uzatmadan canlı demoya geçiyorum." ...
+
+--------------------------------------------------------------------------------
+DEMO ADIM 1: POLICY ENGINE (OPA)
+--------------------------------------------------------------------------------
+"İlk olarak, yetki kurallarımızın nasıl çalıştığını göstereyim. Kurallarımız kodun içinde değil, harici bir Rego dosyasındadır."
+
+1. VS Code'da `backend/policies/main.rego` dosyasını gösterin.
+   - "Default allow = false" satırını vurgulayın.
+2. Terminal'de Policy Yükleme komutunu çalıştırın:
+   `curl -X PUT --data-binary @backend/policies/main.rego http://localhost:8181/v1/policies/disc/authz`
+
+--------------------------------------------------------------------------------
+DEMO ADIM 2: SECURE FLOW (MINTING + AUDIT + ENCRYPTION)
+--------------------------------------------------------------------------------
+"Şimdi güvenli bir işlem yapalım. Normalde CLI üzerinden anonim istek atıldığında sistem reddeder (403). Bu yüzden yetkili bir 'token' ile işlem yapan secure script'imi çalıştıracağım."
+
+1. Script'i çalıştırın:
+   `python scripts/demo_mint.py`
+   
+   (Bu script şunları yapar:
+    - OIDC standartlarına uygun, imzalı bir Admin Token üretir.
+    - `/issue` servisine 'Authorization: Bearer ...' header'ı ile gider.
+    - Kuponu alır ve ekrana basar.)
+
+2. **GÖRSEL ŞOV:** Hemen Tarayıcıya (`http://localhost:5173`) gidin ve "Audit Logs" sekmesine tıklayın.
+   - En üstte yeni düşen logu gösterin.
+   - Detayına tıklayın ve **Signature** alanını gösterin. "Logumuz kriptografik olarak imzalandı."
+   - "Ayrıca log içindeki hassas veriler veritabanında şifreli duruyor, sadece şu an admin olduğum için açık görüyorum."
+
+--------------------------------------------------------------------------------
+DEMO ADIM 3: GOVERNANCE & PLAYBOOKS
+--------------------------------------------------------------------------------
+"Teknik önlemlerin yanında süreçlerimizi de garantiye aldık."
+
+1. VS Code'da `docs/incident_playbook.md` dosyasını açın.
+   - "Bir güvenlik ihlali durumunda (örneğin Key Compromise) yapılacaklar adım adım burada yazılı."
+
+--------------------------------------------------------------------------------
+BÖLÜM 2: SORU-CEVAP VE SENARYOLAR (QA)
+--------------------------------------------------------------------------------
+Buradaki sorular, sunum sonrası "Saldırgan şunu yaparsa ne olur?" diye sorulduğunda yapılacak demolardır.
+
+--------------------------------------------------------------------------------
+SORU 1: SALDIRI DAYANIKLILIĞI (RATE LIMITING)
+--------------------------------------------------------------------------------
+Soru: "API'niz DoS saldırılarına açık mı? Bir bot saniyede binlerce istek atarsa ne olur?"
+
+Cevap: "Uygulama katmanında `SlowAPI` ve Redis kullanarak Rate Limiting uyguluyoruz. Sınır aşılınca sistem otomatik olarak `429 Too Many Requests` döner."
+
+DEMO:
+Terminal'de loop ile saldırı simülasyonu yapın:
+`1..10 | % { Invoke-RestMethod -Uri "http://localhost:8000/health" -Method Get }`
+(İlk 5 istek OK, sonrakilerde 429 hatası görülecek).
+
+--------------------------------------------------------------------------------
+SORU 2: DELEGASYON (YETKİ DEVRİ)
+--------------------------------------------------------------------------------
+Soru: "İzinli olduğumda yetkimi başkasına devredebilir miyim?"
+
+Cevap: "Evet, Delegation Service ile bu mümkün. OPA, yetki kontrolü yaparken bu delegasyonları da dikkate alır."
+
+DEMO:
+`curl -X POST "http://localhost:8000/v1/delegations" -H "Content-Type: application/json" -d "{\"delegate\": \"mehmet\", \"resource\": \"gizli-belge\", \"ttl\": 3600}"`
+
+--------------------------------------------------------------------------------
+SORU 3: LOG GÜVENLİĞİ
+--------------------------------------------------------------------------------
+Soru: "Admin veritabanına girip logları değiştiremez mi?"
+
+Cevap: "Değiştirebilir ama imzayı (signature) taklit edemez. Her log kaydı oluşturulduğu anda özel bir anahtarla imzalanır. Log doğrulama aracımız, imzası bozulmuş veya zinciri kopmuş logları anında tespit eder (Tamper Evidence)."
+
+--------------------------------------------------------------------------------
+KAPANIŞ
+--------------------------------------------------------------------------------
+"Özetle; Person D olarak DISC projesini, 'Güvenlik sonradan eklenmez, tasarımla (by design) gelir' prensibiyle, uçtan uca güvenli hale getirdim."
+================================================================================
+PERSON D: DEMO & QA SCRIPT (SECURITY & COMPLIANCE)
+================================================================================
+
+Bu dosya, Person D (Security Lead) tarafından yapılacak sunum için hazırlanmış kapsamlı bir rehberdir. 
+İçerikte Kişisel Tanıtım, Proje/Teknoloji Tanıtımı ve Teknik Soru-Cevap/Demo bölümleri bulunur.
+
+--------------------------------------------------------------------------------
+BÖLÜM 0: GİRİŞ & ROL TANIMI (WHO AM I?)
+--------------------------------------------------------------------------------
+
+KONUŞMA METNİ (GİRİŞ):
+"Merhaba, ben bu projede 'Person D' yani 'Security & Policy Lead' rolünü üstlendim. 
+6 haftalık süreçte ana sorumluluğum, uygulamanın sadece 'çalışmasını' değil, 
+'güvenli ve denetlenebilir' bir şekilde çalışmasını sağlamaktı."
+
+SORUMLULUKLARIM (Neler Yaptım?):
+1.  **Policy Model (OPA):** Yetkilendirme kararlarını koddan ayırıp merkezi bir yapıya taşıdım.
+2.  **Secure Logging (Audit):** Kim, ne zaman, ne yaptı? sorularının cevabını değiştirilemez (immutable) loglarla kayıt altına aldım.
+3.  **Data Protection:** Hassas verilerin (PII) şifrelenerek saklanmasını sağladım.
+4.  **Hardening:** Uygulamayı dış saldırılara (DoS, Brute Force) karşı güçlendirdim (Rate Limiting, Security Headers).
+5.  **Governance:** Sadece kod değil, süreç güvenliği için Olay Müdahale (Playbook) ve Uyumluluk (Checklist) dokümanlarını hazırladım.
+
+--------------------------------------------------------------------------------
+BÖLÜM 1: TEKNOLOJİ ÖZETİ - OPA NEDİR?
+--------------------------------------------------------------------------------
+
+SORU (GELEBİLİR) veya ANLATILACAK KISIM:
+"Projede yetkilendirme (Authorization) için OPA kullandığınızı söylediniz. Nedir bu OPA ve neden bunu tercih ettiniz?"
+
+CEVAP:
+"OPA (Open Policy Agent), 'Policy as Code' yaklaşımının endüstri standardıdır. 
+Geleneksel yapıda 'Admin ise girsin, değilse girmesin' gibi kurallar (if/else) kodun içine gömülürdü. 
+Bu durum, kural değiştiğinde kodun da değişip deploy edilmesini gerektiriyordu.
+
+Biz OPA kullanarak Karar Mekanizmasını (Decision Point) koddan tamamen ayırdık:
+1.  **Decoupling:** Yazılım ekibi iş mantığına, Güvenlik ekibi ise OPA kurallarına (Rego dosyalarına) odaklanır.
+2.  **Dynamic Updates:** Servisi yeniden başlatmadan, sadece Rego dosyasını güncelleyerek yetki kurallarını anlık olarak değiştirebiliyoruz.
+3.  **Unified Control:** Sadece API değil, Kubernetes, Kafka veya Veritabanı katmanında da aynı dili kullanarak yetki kontrolü yapabiliyoruz."
+
+--------------------------------------------------------------------------------
+BÖLÜM 2: HAFTALIK TEKNİK DEMO & SORU-CEVAP
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+WEEK 1: POLICY MODEL & THREAT MODELING
+--------------------------------------------------------------------------------
+
+SORU: 
+"Yetkilendirme mantığınızı koddan nasıl ayırdığınızı bize canlı gösterebilir misiniz?"
+
+CEVAP:
+"Elbette. Backend kodumuzda bir 'if user == admin' kontrolü göremezsiniz. Bunun yerine OPA'ya bir sorgu atıp sadece sonucu (Allow/Deny) uygularız."
+
+DEMO GÖSTERİMİ:
+1. VS Code'da AÇIK OLAN şu dosyayı gösterin: `backend/policies/main.rego`
+   - `default allow = false` satırını gösterin (Secure by Default).
+   - "Kurallarımız burada Rego dilinde yazılı" deyin.
+2. Terminal'de (Backend ve OPA çalışırken) şu komutla policy'i yükleyin:
+   `curl -X PUT --data-binary @backend/policies/main.rego http://localhost:8181/v1/policies/disc/authz`
+
+--------------------------------------------------------------------------------
+WEEK 2: SECURE LOGGING & INFRA
+--------------------------------------------------------------------------------
+
+SORU:
+"Bir saldırgan sisteme sızsa ve logları silmeye çalışsa, bunu nasıl engellersiniz veya fark edersiniz?"
+
+CEVAP:
+"DISC projesinde 'Immutable Audit Log' prensibini benimsedik. Loglar oluştuğu anda kriptografik olarak imzalanır ve bütünlük koruması altına alınır. Şu an Redis'e (append-only) yazıyoruz, production ortamında ise Kafka gibi dağıtık sistemlere akıtarak logun silinmesini imkansız kılıyoruz."
+
+DEMO GÖSTERİMİ:
+1. Terminal'de bir Coupon oluşturun (Mint işlemi):
+   `python cli/disc-cli.py mint --audience demo-app --scope read:data`
+2. **GÖRSEL EFEKT:** Hemen Tarayıcıyı (`http://localhost:5173`) açın ve "Audit Logs" ekranını gösterin.
+   - Az önce oluşturduğunuz logun en üste düştüğünü gösterin.
+   - Log detayına tıklayıp `signature` alanını gösterin. "Bakın, bu imza logun orijinal olduğunun kanıtıdır."
+
+--------------------------------------------------------------------------------
+WEEK 3: ADVANCED POLICY (DELEGATION)
+--------------------------------------------------------------------------------
+
+SORU:
+"İzinli olduğumda veya acil bir durumda yetkimi iş arkadaşıma devredebilir miyim? Sistem bunu destekliyor mu?"
+
+CEVAP:
+"Evet, Week 3 kapsamında 'Delegation Service' geliştirdik. Bu özellik, bir kullanıcının (Delegator) sahip olduğu yetkiyi, belirli bir süre (TTL) ve belirli bir kaynak için başka bir kullanıcıya (Delegate) devretmesini sağlar. OPA, yetki kontrolü yaparken bu delegasyon kayıtlarını da hesaba katar."
+
+DEMO GÖSTERİMİ:
+1. Delegasyon oluşturma komutunu çalıştırın:
+   `curl -X POST "http://localhost:8005/v1/delegations" -H "Content-Type: application/json" -d "{\"delegate\": \"mehmet\", \"resource\": \"gizli-belge\", \"ttl\": 3600}"`
+2. "Delegasyon başarıyla oluşturuldu ve Redis'e işlendi" diyerek JSON çıktısını gösterin.
+
+--------------------------------------------------------------------------------
+WEEK 4: AUDIT INDEXING & DATA PROTECTION (ENCRYPTION)
+--------------------------------------------------------------------------------
+
+SORU:
+"KVKK/GDPR gereği kişisel verileri (PII) nasıl koruyorsunuz? Loglarda e-posta veya TC Kimlik no açık duruyor mu?"
+
+CEVAP:
+"Hayır, durmuyor. 'Defense in Depth' (Derinlemesine Savunma) ilkesi gereği, loglar veritabanına yazılmadan önce, içindeki hassas alanlar (details bloğu) uygulama katmanında AES-GCM ile şifrelenir (Encryption at Rest). Veritabanı yöneticisi bile bu verileri okuyamaz. Sadece Admin API üzerinden, yetkili kişiler bu verileri çözülmüş (decrypted) olarak görebilir."
+
+DEMO GÖSTERİMİ:
+1. **GÖRSEL EFEKT:** Tarayıcıda Admin UI'da bir logun detayını açın.
+   - PII içeren bir alan varsa "normalde şifreli saklanır, şu an Admin olduğum için açık görüyorum" deyin.
+2. KANIT: VS Code'da AÇIK OLAN `backend/services/audit.py` dosyasındaki `encrypt_field` metodunu gösterin. "Backend kodumuz veriyi tam burada şifreliyor."
+
+--------------------------------------------------------------------------------
+WEEK 5: HARDENING (RATE LIMITING & SECURITY HEADERS)
+--------------------------------------------------------------------------------
+
+SORU:
+"API'niz DoS saldırılarına açık mı? Bir bot saniyede binlerce istek atarsa ne olur?"
+
+CEVAP:
+"Uygulama katmanında koruma aldık. `SlowAPI` kütüphanesi ve Redis kullanarak Rate Limiting uyguluyoruz. Örneğin `/issue` endpointi gibi kaynak tüketen işlemler için IP başına dakikada 5 istek gibi katı sınırlarımız var. Sınır aşılınca sistem otomatik olarak `429 Too Many Requests` döner ve saldırganı engeller."
+
+DEMO GÖSTERİMİ:
+1. Terminal'de hızlıca üst üste aynı isteği atarak (PowerShell loop veya art arda enter) 429 hatasını ekrana yansıtın.
+   `1..10 | % { Invoke-RestMethod -Uri "http://localhost:8005/health" -Method Get }` 
+
+--------------------------------------------------------------------------------
+WEEK 6: GOVERNANCE & EVALUATION
+--------------------------------------------------------------------------------
+
+SORU:
+"Teknik önlemler güzel ama süreçleriniz nasıl? Bir güvenlik olayı yaşanırsa panik mi yapacaksınız?"
+
+CEVAP:
+"Hayır, hazırlıklıyız. 'Governance' (Yönetişim) çalışmalarımız kapsamında Olay Müdahale Planlarımızı (Incident Response Playbooks) oluşturduk. Hangi durumda (örneğin Key Compromise) kimin ne yapacağı adım adım yazılı. Ayrıca sistemin genel durumunu 'Security Scan' scriptlerimizle düzenli olarak tarıyoruz."
+
+DEMO GÖSTERİMİ:
+1. VS Code'da AÇIK OLAN `docs/incident_playbook.md` dosyasını gösterin.
+2. `docs/DEEP_AUDIT_REPORT.md` dosyasını açıp "ALL GAPS REMEDIATED" (Tüm Eksikler Giderildi) yazısını göstererek sunumu bitirin.
+
+================================================================================
+KAPANIŞ VE ÖZET
+================================================================================
+"Özetle; Person D olarak, DISC projesini sadece fonksiyonel bir API olmaktan çıkarıp, 
+güvenliği mimari seviyesinde ele alan, denetlenebilir ve dayanıklı bir kurumsal servise dönüştürdüm."
